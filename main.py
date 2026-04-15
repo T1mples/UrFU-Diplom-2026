@@ -152,10 +152,11 @@ def write_report(
         )
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
+    reports_dir = os.path.join(base_dir, "reports")
     if os.path.isabs(filename):
         filename_full = filename
     else:
-        filename_full = os.path.join(base_dir, filename)
+        filename_full = os.path.join(reports_dir, filename)
 
     dirname = os.path.dirname(filename_full)
     if dirname:
