@@ -1,7 +1,11 @@
+import csv
+import os
+import tempfile
 import unittest
 
 import main
 from algorithm import build_dihedral_involution_generators, commutes
+from experiments import run_csv_experiment
 from webgraph import cycle_to_web_route
 
 
@@ -36,6 +40,31 @@ class CoreLogicTest(unittest.TestCase):
             cycle_to_web_route(cycle),
             ["/page/e", "/page/r0s", "/page/r2", "/page/e"],
         )
+
+    def test_csv_experiment_writes_rows(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = os.path.join(temp_dir, "experiment.csv")
+
+            summary = run_csv_experiment(
+                main.check_parameters,
+                max_n=4,
+                max_hamilton_check_n=4,
+                output_path=output_path,
+            )
+
+            self.assertEqual(summary["iterations"], 4)
+            self.assertTrue(os.path.exists(output_path))
+
+            with open(output_path, "r", encoding="utf-8", newline="") as csv_file:
+                rows = list(csv.DictReader(csv_file))
+
+            self.assertEqual(len(rows), 4)
+            row = next(row for row in rows if row["n"] == "4" and row["k"] == "1")
+            self.assertEqual(row["generators"], "r0s, r2s, r1s")
+            self.assertEqual(row["generator_conditions"], "True")
+            self.assertEqual(row["theorem_conditions"], "True")
+            self.assertEqual(row["hamiltonian"], "True")
+            self.assertIn("/page/e", row["web_route"])
 
 
 if __name__ == "__main__":

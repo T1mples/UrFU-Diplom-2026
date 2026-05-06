@@ -16,6 +16,7 @@ from algorithm import (
     generate_subgroup,
     is_involution,
 )
+from experiments import run_csv_experiment
 from webgraph import format_web_route
 
 
@@ -477,15 +478,78 @@ def single_mode():
     draw_graph(graph, generators, cycle=cycle)
 
 
+def experiment_mode():
+    print("=== CSV-эксперимент по графам Кэли диэдральных групп ===")
+    try:
+        max_n = int(input("Введите максимальное n для перебора: "))
+        if max_n < 2:
+            raise ValueError
+    except ValueError:
+        raise SystemExit("Максимальное n должно быть целым числом не меньше 2.")
+
+    raw_max_hamilton_n = input(
+        f"Введите максимальное n для поиска гамильтонова цикла [{max_n}]: "
+    ).strip()
+    if raw_max_hamilton_n:
+        try:
+            max_hamilton_n = int(raw_max_hamilton_n)
+            if max_hamilton_n < 2:
+                raise ValueError
+        except ValueError:
+            raise SystemExit(
+                "Максимальное n для поиска цикла должно быть целым числом не меньше 2."
+            )
+    else:
+        max_hamilton_n = max_n
+
+    raw_max_iterations = input(
+        "Введите максимальное число итераций или оставьте пустым: "
+    ).strip()
+    if raw_max_iterations:
+        try:
+            max_iterations = int(raw_max_iterations)
+            if max_iterations <= 0:
+                raise ValueError
+        except ValueError:
+            raise SystemExit(
+                "Число итераций должно быть положительным целым числом."
+            )
+    else:
+        max_iterations = None
+
+    summary = run_csv_experiment(
+        check_parameters,
+        max_n=max_n,
+        max_hamilton_check_n=max_hamilton_n,
+        max_iterations=max_iterations,
+    )
+
+    print("\nЭксперимент завершен.")
+    print(f"CSV сохранен в {summary['output_path']}")
+    print(f"Итераций выполнено: {summary['iterations']}")
+    print(
+        "Систем с базовыми условиями на генераторы: "
+        f"{summary['generator_conditions_count']}"
+    )
+    print(f"Порождающих систем: {summary['generating_count']}")
+    print(f"Систем, удовлетворяющих условиям теоремы: {summary['theorem_conditions_count']}")
+    print(f"Проверено на гамильтоновость: {summary['checked_hamiltonian_count']}")
+    print(f"С гамильтоновым циклом: {summary['hamiltonian_count']}")
+    print(f"Общее время: {format_duration(summary['total_elapsed_seconds'])}")
+
+
 if __name__ == "__main__":
     print("Выберите режим:")
     print("1. Поиск исключений (бесконечный)")
     print("2. Поиск исключений (ограниченное число итераций)")
     print("3. Одиночная проверка")
-    mode = input("Введите 1, 2 или 3 [1]: ").strip()
+    print("4. CSV-эксперимент")
+    mode = input("Введите 1, 2, 3 или 4 [1]: ").strip()
 
     if mode == "3":
         single_mode()
+    elif mode == "4":
+        experiment_mode()
     elif mode == "2":
         try:
             max_iterations = int(input("Введите максимальное число итераций: "))
