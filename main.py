@@ -16,6 +16,7 @@ from algorithm import (
     generate_subgroup,
     is_involution,
 )
+from webgraph import format_web_route
 
 
 def format_duration(total_seconds):
@@ -23,6 +24,13 @@ def format_duration(total_seconds):
     hours, remainder = divmod(total_seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
     return f"{int(hours):02d}:{int(minutes):02d}:{seconds:06.3f}"
+
+
+def format_element_route(cycle):
+    if not cycle:
+        return ""
+    closed_cycle = cycle + [cycle[0]]
+    return " -> ".join(element_to_str(vertex) for vertex in closed_cycle)
 
 
 def find_non_commuting_pairs(generators, n):
@@ -34,7 +42,7 @@ def find_non_commuting_pairs(generators, n):
     return non_commuting_pairs
 
 
-def draw_graph(graph, generators):
+def draw_graph(graph, generators, cycle=None):
     graph_view = nx.DiGraph()
     labels = {}
     edge_colors = ["#d1495b", "#2f9e44", "#2458b3"]
@@ -46,6 +54,14 @@ def draw_graph(graph, generators):
             graph_view.add_edge(node, neighbor)
             if index < len(edge_groups):
                 edge_groups[index].add(frozenset((node, neighbor)))
+
+    cycle_edges = set()
+    if cycle:
+        closed_cycle = cycle + [cycle[0]]
+        cycle_edges = {
+            frozenset((closed_cycle[index], closed_cycle[index + 1]))
+            for index in range(len(cycle))
+        }
 
     undirected_view = nx.Graph(graph_view)
     try:
@@ -94,6 +110,32 @@ def draw_graph(graph, generators):
             )
         )
 
+    if cycle_edges:
+        nx.draw_networkx_edges(
+            graph_view,
+            pos,
+            edgelist=[tuple(edge) for edge in cycle_edges],
+            arrows=True,
+            arrowstyle="<|-|>",
+            arrowsize=20,
+            edge_color="#f08c00",
+            width=4.0,
+            min_source_margin=17,
+            min_target_margin=17,
+            connectionstyle="arc3,rad=0.08",
+        )
+        legend_handles.append(
+            Line2D(
+                [0],
+                [0],
+                color="#f08c00",
+                lw=4,
+                marker=">",
+                markersize=7,
+                label="гамильтонов цикл",
+            )
+        )
+
     plt.legend(
         handles=legend_handles,
         title="Инволюции",
@@ -116,12 +158,17 @@ def write_report(
     skipped_non_generating,
     checked_hamiltonian,
     total_elapsed_seconds,
+    max_hamilton_check_n=None,
+    skipped_invalid_conditions=0,
+    last_hamiltonian=None,
 ):
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     lines = [
         f"Отчет создан: {now}",
+        "Модель: веб-граф как граф Кэли диэдральной группы.",
         f"Итераций выполнено: {iterations}",
         f"Общее время вычислений: {format_duration(total_elapsed_seconds)}",
+        f"Пропущено систем вне условий теоремы: {skipped_invalid_conditions}",
         f"Пропущено непорождающих систем: {skipped_non_generating}",
         f"Проверено на гамильтоновость: {checked_hamiltonian}",
         f"С гамильтоновым циклом: {hamilton_count}",
@@ -146,9 +193,15 @@ def write_report(
     if last_checked:
         lines.append(f"Последняя проверка: n = {last_checked['n']}, k = {last_checked['k']}")
 
-    if MAX_HAMILTON_CHECK_N is not None:
+    if last_hamiltonian and last_hamiltonian.get("cycle"):
+        lines.append("Последний найденный гамильтонов цикл:")
+        lines.append(format_element_route(last_hamiltonian["cycle"]))
+        lines.append("Веб-маршрут последнего найденного цикла:")
+        lines.append(format_web_route(last_hamiltonian["cycle"]))
+
+    if max_hamilton_check_n is not None:
         lines.append(
-            f"Проверка гамильтонова цикла выполнялась для n <= {MAX_HAMILTON_CHECK_N}."
+            f"Проверка гамильтонова цикла выполнялась для n <= {max_hamilton_check_n}."
         )
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -168,33 +221,32 @@ def write_report(
     print(f"Отчет сохранен в {filename_full}")
 
 
-def check_parameters(n, k):
+def check_parameters(n, k, max_hamilton_check_n=None):
     generators = build_dihedral_involution_generators(n, k)
-    if not all(is_involution(generator, n) for generator in generators):
-        return {
-            "generators": generators,
-            "generates": False,
-            "hamiltonian": False,
-            "cycle_checked": False,
-            "details": "Один или несколько генераторов не являются инволюцией.",
-        }
-
-    non_commuting_pairs = find_non_commuting_pairs(generators, n)
-    if non_commuting_pairs:
-        pair_labels = ", ".join(f"g{i + 1}-g{j + 1}" for i, j in non_commuting_pairs)
-        return {
-            "generators": generators,
-            "generates": False,
-            "hamiltonian": False,
-            "cycle_checked": False,
-            "details": f"Не все пары генераторов коммутируют: {pair_labels}.",
-        }
-
     group_size = 2 * n
+    involutions = [is_involution(generator, n) for generator in generators]
+    all_involutions = all(involutions)
+    distinct_generators = len(set(generators)) == len(generators)
+    commuting_pair = commutes(generators[0], generators[1], n)
+    generator_conditions = all_involutions and distinct_generators and commuting_pair
     closure = generate_subgroup(generators, n)
+    subgroup_size = len(closure)
     generates = len(closure) == group_size
+    theorem_conditions = generator_conditions and generates
     hamiltonian = False
-    cycle_checked = n <= MAX_HAMILTON_CHECK_N
+    cycle = None
+    cycle_allowed_by_limit = max_hamilton_check_n is None or n <= max_hamilton_check_n
+    cycle_checked = cycle_allowed_by_limit and generates
+    details = []
+
+    if not all_involutions:
+        details.append("Один или несколько генераторов не являются инволюцией.")
+    if not distinct_generators:
+        details.append("Среди трех генераторов есть совпадающие элементы.")
+    if not commuting_pair:
+        details.append("Первые две инволюции g1 и g2 не коммутируют.")
+    if not generates:
+        details.append(f"Генераторы порождают подгруппу размера {subgroup_size}, а не D_{n}.")
 
     if cycle_checked and generates:
         graph = build_cayley_graph(build_dihedral_group(n), generators, n)
@@ -202,11 +254,21 @@ def check_parameters(n, k):
         hamiltonian = cycle is not None
 
     return {
+        "n": n,
+        "k": k,
         "generators": generators,
+        "group_size": group_size,
+        "subgroup_size": subgroup_size,
+        "involutions": involutions,
+        "distinct_generators": distinct_generators,
+        "commuting_pair": commuting_pair,
+        "generator_conditions": generator_conditions,
+        "theorem_conditions": theorem_conditions,
         "generates": generates,
         "hamiltonian": hamiltonian,
         "cycle_checked": cycle_checked,
-        "details": None,
+        "cycle": cycle,
+        "details": " ".join(details) if details else None,
     }
 
 
@@ -219,18 +281,18 @@ def search_exceptions(max_iterations=None):
     except ValueError:
         max_n = 10
 
-    global MAX_HAMILTON_CHECK_N
-    MAX_HAMILTON_CHECK_N = max_n
     print(
-        f"Проверка гамильтонова цикла будет выполняться для n <= {MAX_HAMILTON_CHECK_N}"
+        f"Проверка гамильтонова цикла будет выполняться для n <= {max_n}"
     )
 
     iterations = 0
     hamilton_count = 0
+    skipped_invalid_conditions = 0
     skipped_non_generating = 0
     checked_hamiltonian = 0
     total_elapsed_seconds = 0.0
     exception_info = None
+    last_hamiltonian = None
     last_checked = None
     n = 2
 
@@ -245,7 +307,7 @@ def search_exceptions(max_iterations=None):
                     raise StopIteration
 
                 started_at = time.perf_counter()
-                params = check_parameters(n, k)
+                params = check_parameters(n, k, max_hamilton_check_n=max_n)
                 iteration_elapsed = time.perf_counter() - started_at
 
                 iterations += 1
@@ -263,8 +325,20 @@ def search_exceptions(max_iterations=None):
                     f"суммарно: {format_duration(total_elapsed_seconds)}"
                 )
 
+                if not params["generator_conditions"]:
+                    print(
+                        "  Пропуск: система не удовлетворяет условиям теоремы "
+                        "о трех инволюциях с коммутирующей парой."
+                    )
+                    if params["details"]:
+                        print(f"  Детали: {params['details']}")
+                    skipped_invalid_conditions += 1
+                    continue
+
                 if not params["generates"]:
                     print(f"  Пропуск: система не является порождающей для D_{n}.")
+                    if params["details"]:
+                        print(f"  Детали: {params['details']}")
                     skipped_non_generating += 1
                     continue
 
@@ -272,7 +346,10 @@ def search_exceptions(max_iterations=None):
                     checked_hamiltonian += 1
                     if params["hamiltonian"]:
                         hamilton_count += 1
+                        last_hamiltonian = params
                         print("  Проверка гамильтонова цикла: найден.")
+                        print(f"  Цикл: {format_element_route(params['cycle'])}")
+                        print(f"  Веб-маршрут: {format_web_route(params['cycle'])}")
                     else:
                         print("  Проверка гамильтонова цикла: не найден.")
                         exception_info = {
@@ -280,13 +357,14 @@ def search_exceptions(max_iterations=None):
                             "n": n,
                             "k": k,
                             "generators": params["generators"],
+                            "cycle": params["cycle"],
                             "details": "Цикл не найден при полном графе Кэли.",
                         }
                         raise StopIteration
                 else:
                     print(
                         f"  Проверка гамильтонова цикла пропущена для n={n} "
-                        f"(n > {MAX_HAMILTON_CHECK_N})."
+                        f"(n > {max_n})."
                     )
 
             n += 2
@@ -303,6 +381,9 @@ def search_exceptions(max_iterations=None):
             skipped_non_generating,
             checked_hamiltonian,
             total_elapsed_seconds,
+            max_n,
+            skipped_invalid_conditions,
+            last_hamiltonian,
         )
         return
     except StopIteration:
@@ -321,6 +402,9 @@ def search_exceptions(max_iterations=None):
             skipped_non_generating,
             checked_hamiltonian,
             total_elapsed_seconds,
+            max_n,
+            skipped_invalid_conditions,
+            last_hamiltonian,
         )
         return
 
@@ -342,7 +426,11 @@ def single_mode():
             f"Введите параметр k — смещение третьей инволюции (целое число от 1 до {n - 1}): "
         )
     )
-    generators = build_dihedral_involution_generators(n, k)
+    if not 1 <= k <= n - 1:
+        raise SystemExit(f"k должно быть целым числом от 1 до {n - 1}.")
+
+    params = check_parameters(n, k)
+    generators = params["generators"]
 
     print("\nГенераторы (инволюции):")
     for index, generator in enumerate(generators, start=1):
@@ -350,32 +438,43 @@ def single_mode():
             f"  g{index} = {element_to_str(generator)}  "
             f"(инволюция: {is_involution(generator, n)})"
         )
+
+    print("\nУсловия теоремы о трех инволюциях:")
+    print(f"  Все генераторы являются инволюциями: {all(params['involutions'])}")
+    print(f"  Генераторы попарно различны: {params['distinct_generators']}")
+    print(f"  g1 и g2 коммутируют: {params['commuting_pair']}")
+    print(f"  Базовые условия на генераторы выполнены: {params['generator_conditions']}")
+    print(f"  Полные условия теоремы с учетом порождения: {params['theorem_conditions']}")
+    if params["details"]:
+        print(f"  Детали: {params['details']}")
+
     non_commuting_pairs = find_non_commuting_pairs(generators, n)
-    print(f"  Все пары генераторов коммутируют: {not non_commuting_pairs}")
+    print(f"  Информационно: все пары генераторов коммутируют: {not non_commuting_pairs}")
     if non_commuting_pairs:
         pair_labels = ", ".join(f"g{i + 1}-g{j + 1}" for i, j in non_commuting_pairs)
-        print(f"  Некоммутирующие пары: {pair_labels}")
+        print(f"  Информационно: некоммутирующие пары: {pair_labels}")
 
     group = build_dihedral_group(n)
-    closure = generate_subgroup(generators, n)
 
     print(f"\nРазмер группы D_{n} = {len(group)}")
-    print(f"Размер порождённой подгруппы = {len(closure)}")
-    if len(closure) == len(group):
+    print(f"Размер порождённой подгруппы = {params['subgroup_size']}")
+    if params["generates"]:
         print("Генераторы порождают всю группу.")
     else:
         print("Генераторы не порождают всю группу.")
 
     graph = build_cayley_graph(group, generators, n)
-    cycle = find_hamiltonian_cycle(graph)
+    cycle = params["cycle"]
 
     if cycle:
         print("\nГамильтонов цикл найден:")
-        print([element_to_str(vertex) for vertex in cycle] + [element_to_str(cycle[0])])
+        print(format_element_route(cycle))
+        print("\nТот же цикл как маршрут веб-страниц:")
+        print(format_web_route(cycle))
     else:
         print("\nГамильтонов цикл не найден")
 
-    draw_graph(graph, generators)
+    draw_graph(graph, generators, cycle=cycle)
 
 
 if __name__ == "__main__":
