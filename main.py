@@ -27,6 +27,16 @@ def format_duration(total_seconds):
     return f"{int(hours):02d}:{int(minutes):02d}:{seconds:06.3f}"
 
 
+def reports_file_path(filename):
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    reports_dir = os.path.join(base_dir, "reports")
+    return os.path.join(reports_dir, filename)
+
+
+def default_graph_image_filename(n, k):
+    return f"gamilthon_graph_D{n}_k{k}_{datetime.datetime.now():%Y%m%d_%H%M%S}.png"
+
+
 def format_element_route(cycle):
     if not cycle:
         return ""
@@ -43,7 +53,7 @@ def find_non_commuting_pairs(generators, n):
     return non_commuting_pairs
 
 
-def draw_graph(graph, generators, cycle=None):
+def draw_graph(graph, generators, cycle=None, output_path=None, show=True):
     graph_view = nx.DiGraph()
     labels = {}
     edge_colors = ["#d1495b", "#2f9e44", "#2458b3"]
@@ -146,7 +156,18 @@ def draw_graph(graph, generators, cycle=None):
     )
     plt.axis("off")
     plt.tight_layout(rect=(0, 0, 0.82, 1))
-    plt.show()
+
+    if output_path:
+        dirname = os.path.dirname(output_path)
+        if dirname:
+            os.makedirs(dirname, exist_ok=True)
+        plt.savefig(output_path, dpi=200, bbox_inches="tight")
+
+    if show and plt.get_backend().lower() != "agg":
+        plt.show()
+
+    plt.close()
+    return output_path
 
 
 def write_report(
@@ -205,12 +226,10 @@ def write_report(
             f"Проверка гамильтонова цикла выполнялась для n <= {max_hamilton_check_n}."
         )
 
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    reports_dir = os.path.join(base_dir, "reports")
     if os.path.isabs(filename):
         filename_full = filename
     else:
-        filename_full = os.path.join(reports_dir, filename)
+        filename_full = reports_file_path(filename)
 
     dirname = os.path.dirname(filename_full)
     if dirname:
@@ -475,7 +494,9 @@ def single_mode():
     else:
         print("\nГамильтонов цикл не найден")
 
-    draw_graph(graph, generators, cycle=cycle)
+    image_path = reports_file_path(default_graph_image_filename(n, k))
+    draw_graph(graph, generators, cycle=cycle, output_path=image_path)
+    print(f"\nИзображение графа сохранено в {image_path}")
 
 
 def experiment_mode():

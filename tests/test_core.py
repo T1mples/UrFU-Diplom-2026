@@ -4,7 +4,12 @@ import tempfile
 import unittest
 
 import main
-from algorithm import build_dihedral_involution_generators, commutes
+from algorithm import (
+    build_cayley_graph,
+    build_dihedral_group,
+    build_dihedral_involution_generators,
+    commutes,
+)
 from experiments import run_csv_experiment
 from webgraph import cycle_to_web_route
 
@@ -65,6 +70,28 @@ class CoreLogicTest(unittest.TestCase):
             self.assertEqual(row["theorem_conditions"], "True")
             self.assertEqual(row["hamiltonian"], "True")
             self.assertIn("/page/e", row["web_route"])
+
+    def test_draw_graph_writes_image(self):
+        result = main.check_parameters(4, 1, max_hamilton_check_n=4)
+        graph = build_cayley_graph(
+            build_dihedral_group(4),
+            result["generators"],
+            4,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = os.path.join(temp_dir, "graph.png")
+            saved_path = main.draw_graph(
+                graph,
+                result["generators"],
+                cycle=result["cycle"],
+                output_path=output_path,
+                show=False,
+            )
+
+            self.assertEqual(saved_path, output_path)
+            self.assertTrue(os.path.exists(output_path))
+            self.assertGreater(os.path.getsize(output_path), 0)
 
 
 if __name__ == "__main__":
