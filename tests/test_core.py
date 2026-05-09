@@ -12,7 +12,12 @@ from algorithm import (
 )
 from experiments import run_csv_experiment
 from generator_systems import ROTATION_REFLECTION, THREE_INVOLUTIONS
-from webgraph import cycle_to_web_route
+from webgraph import (
+    build_vertex_page_map,
+    cycle_to_web_route,
+    format_page_route,
+    load_page_paths,
+)
 
 
 class CoreLogicTest(unittest.TestCase):
@@ -62,6 +67,30 @@ class CoreLogicTest(unittest.TestCase):
             ["/page/e", "/page/r0s", "/page/r2", "/page/e"],
         )
 
+    def test_custom_page_route_uses_loaded_pages(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            pages_path = os.path.join(temp_dir, "pages.txt")
+            with open(pages_path, "w", encoding="utf-8") as page_file:
+                page_file.write("# test pages\n")
+                page_file.write("https://example.test/e\n")
+                page_file.write("https://example.test/r0s\n")
+                page_file.write("https://example.test/r1\n")
+
+            pages = load_page_paths(pages_path)
+            vertex_page_map = build_vertex_page_map(
+                [(0, 0), (0, 1), (1, 0)],
+                pages,
+            )
+
+            self.assertEqual(
+                format_page_route([(0, 0), (0, 1)], vertex_page_map),
+                (
+                    "https://example.test/e -> "
+                    "https://example.test/r0s -> "
+                    "https://example.test/e"
+                ),
+            )
+
     def test_csv_experiment_writes_rows(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = os.path.join(temp_dir, "experiment.csv")
@@ -88,6 +117,29 @@ class CoreLogicTest(unittest.TestCase):
             self.assertEqual(row["theorem_conditions"], "True")
             self.assertEqual(row["hamiltonian"], "True")
             self.assertIn("/page/e", row["web_route"])
+
+    def test_csv_experiment_writes_custom_page_route(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = os.path.join(temp_dir, "experiment.csv")
+            page_paths = [
+                f"https://example.test/page-{index}"
+                for index in range(8)
+            ]
+
+            run_csv_experiment(
+                main.check_generator_system,
+                max_n=4,
+                max_hamilton_check_n=4,
+                output_path=output_path,
+                families=[THREE_INVOLUTIONS],
+                page_paths=page_paths,
+            )
+
+            with open(output_path, "r", encoding="utf-8", newline="") as csv_file:
+                rows = list(csv.DictReader(csv_file))
+
+            row = next(row for row in rows if row["n"] == "4" and row["k"] == "1")
+            self.assertIn("https://example.test/page-0", row["page_route"])
 
     def test_csv_experiment_supports_multiple_families(self):
         with tempfile.TemporaryDirectory() as temp_dir:

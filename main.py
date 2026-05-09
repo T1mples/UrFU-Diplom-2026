@@ -24,7 +24,12 @@ from generator_systems import (
     THREE_INVOLUTIONS,
     TWO_REFLECTIONS,
 )
-from webgraph import format_web_route
+from webgraph import (
+    build_vertex_page_map,
+    format_page_route,
+    format_web_route,
+    load_page_paths,
+)
 
 
 def format_duration(total_seconds):
@@ -42,6 +47,28 @@ def reports_file_path(filename):
 
 def default_graph_image_filename(n, k):
     return f"gamilthon_graph_D{n}_k{k}_{datetime.datetime.now():%Y%m%d_%H%M%S}.png"
+
+
+def read_optional_page_paths():
+    try:
+        filename = input(
+            "Введите путь к файлу со страницами или оставьте пустым: "
+        ).strip()
+    except EOFError:
+        return None
+
+    if not filename:
+        return None
+
+    try:
+        page_paths = load_page_paths(filename)
+    except OSError as error:
+        raise SystemExit(f"Не удалось прочитать файл со страницами: {error}")
+    except ValueError as error:
+        raise SystemExit(str(error))
+
+    print(f"Загружено страниц: {len(page_paths)}")
+    return page_paths
 
 
 def format_element_route(cycle):
@@ -533,12 +560,22 @@ def single_mode():
 
     graph = build_cayley_graph(group, generators, n)
     cycle = params["cycle"]
+    page_paths = read_optional_page_paths()
+    vertex_page_map = None
+    if page_paths:
+        try:
+            vertex_page_map = build_vertex_page_map(group, page_paths)
+        except ValueError as error:
+            raise SystemExit(str(error))
 
     if cycle:
         print("\nГамильтонов цикл найден:")
         print(format_element_route(cycle))
         print("\nТот же цикл как маршрут веб-страниц:")
         print(format_web_route(cycle))
+        if vertex_page_map:
+            print("\nТот же цикл как маршрут по страницам из файла:")
+            print(format_page_route(cycle, vertex_page_map))
     else:
         print("\nГамильтонов цикл не найден")
 
@@ -586,6 +623,8 @@ def experiment_mode():
     else:
         families = [THREE_INVOLUTIONS]
 
+    page_paths = read_optional_page_paths()
+
     raw_max_iterations = input(
         "Введите максимальное число итераций или оставьте пустым: "
     ).strip()
@@ -607,6 +646,7 @@ def experiment_mode():
         max_hamilton_check_n=max_hamilton_n,
         max_iterations=max_iterations,
         families=families,
+        page_paths=page_paths,
     )
 
     print("\nЭксперимент завершен.")
@@ -615,6 +655,8 @@ def experiment_mode():
         "Семейства: "
         + ", ".join(FAMILY_LABELS[family] for family in summary["families"])
     )
+    if summary["page_paths_count"]:
+        print(f"Страниц для сопоставления: {summary['page_paths_count']}")
     print(f"Итераций выполнено: {summary['iterations']}")
     print(
         "Систем без дубликатов и нейтрального элемента: "

@@ -3,9 +3,9 @@ import datetime
 import os
 import time
 
-from algorithm import element_to_str
+from algorithm import build_dihedral_group, element_to_str
 from generator_systems import THREE_INVOLUTIONS, iter_generator_systems
-from webgraph import format_web_route
+from webgraph import build_vertex_page_map, format_page_route, format_web_route
 
 
 CSV_FIELDNAMES = [
@@ -29,6 +29,7 @@ CSV_FIELDNAMES = [
     "elapsed_seconds",
     "cycle",
     "web_route",
+    "page_route",
     "details",
 ]
 
@@ -54,8 +55,16 @@ def format_element_route(cycle):
     return " -> ".join(element_to_str(vertex) for vertex in closed_cycle)
 
 
-def build_experiment_row(iteration, result, elapsed_seconds):
+def build_experiment_row(iteration, result, elapsed_seconds, page_paths=None):
     cycle = result.get("cycle")
+    page_route = ""
+    if cycle and page_paths and len(page_paths) >= result["group_size"]:
+        vertex_page_map = build_vertex_page_map(
+            build_dihedral_group(result["n"]),
+            page_paths,
+        )
+        page_route = format_page_route(cycle, vertex_page_map)
+
     return {
         "iteration": iteration,
         "family": result["family"],
@@ -77,6 +86,7 @@ def build_experiment_row(iteration, result, elapsed_seconds):
         "elapsed_seconds": f"{elapsed_seconds:.6f}",
         "cycle": format_element_route(cycle),
         "web_route": format_web_route(cycle),
+        "page_route": page_route,
         "details": result["details"] or "",
     }
 
@@ -88,6 +98,7 @@ def run_csv_experiment(
     max_iterations=None,
     output_path=None,
     families=None,
+    page_paths=None,
 ):
     if max_n < 2:
         raise ValueError("max_n должно быть не меньше 2.")
@@ -107,6 +118,7 @@ def run_csv_experiment(
     summary = {
         "output_path": output_path,
         "families": list(families),
+        "page_paths_count": len(page_paths) if page_paths else 0,
         "iterations": 0,
         "family_conditions_count": 0,
         "generator_conditions_count": 0,
@@ -160,6 +172,7 @@ def run_csv_experiment(
                     summary["iterations"],
                     result,
                     elapsed_seconds,
+                    page_paths=page_paths,
                 )
             )
 
