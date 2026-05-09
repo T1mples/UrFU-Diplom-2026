@@ -211,6 +211,30 @@ class CoreLogicTest(unittest.TestCase):
             self.assertTrue(os.path.exists(output_path))
             self.assertGreater(os.path.getsize(output_path), 0)
 
+    def test_generate_diploma_examples_writes_images_and_summary(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = main.generate_diploma_examples(
+                max_n=4,
+                families=[THREE_INVOLUTIONS, ROTATION_REFLECTION],
+                max_hamilton_check_n=4,
+                output_dir=temp_dir,
+                show=False,
+            )
+
+            self.assertEqual(len(result["examples"]), 2)
+            self.assertEqual(result["missing_families"], [])
+            self.assertTrue(os.path.exists(result["summary_path"]))
+
+            for example in result["examples"]:
+                self.assertTrue(os.path.exists(example["image_path"]))
+                self.assertGreater(os.path.getsize(example["image_path"]), 0)
+
+            with open(result["summary_path"], "r", encoding="utf-8") as summary_file:
+                text = summary_file.read()
+
+            self.assertIn("Дипломные примеры графов Кэли", text)
+            self.assertIn("Гамильтонов цикл", text)
+
 
 if __name__ == "__main__":
     unittest.main()

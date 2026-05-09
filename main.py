@@ -23,6 +23,7 @@ from generator_systems import (
     ROTATION_REFLECTION,
     THREE_INVOLUTIONS,
     TWO_REFLECTIONS,
+    iter_generator_systems,
 )
 from webgraph import (
     build_vertex_page_map,
@@ -47,6 +48,46 @@ def reports_file_path(filename):
 
 def default_graph_image_filename(n, k):
     return f"gamilthon_graph_D{n}_k{k}_{datetime.datetime.now():%Y%m%d_%H%M%S}.png"
+
+
+def default_examples_dirname():
+    return f"diploma_examples_{datetime.datetime.now():%Y%m%d_%H%M%S}"
+
+
+def sanitize_filename_part(value):
+    result = []
+    for char in str(value):
+        if char.isalnum():
+            result.append(char)
+        elif char in ("-", "_"):
+            result.append(char)
+        else:
+            result.append("_")
+    return "".join(result).strip("_") or "params"
+
+
+def format_generators(generators):
+    return ", ".join(element_to_str(generator) for generator in generators)
+
+
+def read_families_selection(default_all=False):
+    print("\nВыберите семейство систем порождающих:")
+    print("1. Три инволюции с коммутирующей парой")
+    print("2. Поворот, обратный поворот и отражение")
+    print("3. Две отражающие симметрии")
+    print("4. Все семейства")
+    default_label = "4" if default_all else "1"
+    family_mode = input(f"Введите 1, 2, 3 или 4 [{default_label}]: ").strip()
+    if not family_mode:
+        family_mode = default_label
+
+    if family_mode == "2":
+        return [ROTATION_REFLECTION]
+    if family_mode == "3":
+        return [TWO_REFLECTIONS]
+    if family_mode == "4":
+        return ALL_FAMILIES
+    return [THREE_INVOLUTIONS]
 
 
 def read_optional_page_paths():
@@ -76,6 +117,16 @@ def format_element_route(cycle):
         return ""
     closed_cycle = cycle + [cycle[0]]
     return " -> ".join(element_to_str(vertex) for vertex in closed_cycle)
+
+
+def format_optional_page_route(n, cycle, page_paths):
+    if not cycle or not page_paths:
+        return ""
+    group = build_dihedral_group(n)
+    if len(page_paths) < len(group):
+        return ""
+    vertex_page_map = build_vertex_page_map(group, page_paths)
+    return format_page_route(cycle, vertex_page_map)
 
 
 def find_non_commuting_pairs(generators, n):
@@ -367,6 +418,148 @@ def check_parameters(n, k, max_hamilton_check_n=None):
     )
 
 
+def is_representative_example(result):
+    if not result["family_conditions"]:
+        return False
+    if not result["generates"] or not result["hamiltonian"] or not result["cycle"]:
+        return False
+    if result["family"] == THREE_INVOLUTIONS:
+        return result["theorem_conditions"]
+    return True
+
+
+def build_examples_summary_lines(examples, missing_families, page_paths_count):
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    lines = [
+        "Дипломные примеры графов Кэли",
+        f"Отчет создан: {now}",
+        f"Количество найденных примеров: {len(examples)}",
+        f"Страниц для сопоставления: {page_paths_count}",
+        "",
+    ]
+
+    if missing_families:
+        missing_labels = [
+            FAMILY_LABELS.get(family, family)
+            for family in missing_families
+        ]
+        lines.append("Не удалось подобрать примеры для семейств:")
+        lines.extend(f"- {label}" for label in missing_labels)
+        lines.append("")
+
+    for index, example in enumerate(examples, start=1):
+        result = example["result"]
+        lines.extend(
+            [
+                f"Пример {index}",
+                f"Семейство: {FAMILY_LABELS.get(result['family'], result['family'])}",
+                f"n = {result['n']}",
+                f"Параметры: {result['parameters']}",
+                f"Генераторы: {format_generators(result['generators'])}",
+                f"Размер группы: {result['group_size']}",
+                f"Размер порожденной подгруппы: {result['subgroup_size']}",
+                f"Изображение: {example['image_path']}",
+                f"Гамильтонов цикл: {format_element_route(result['cycle'])}",
+                f"Модельный веб-маршрут: {format_web_route(result['cycle'])}",
+            ]
+        )
+        if example["page_route"]:
+            lines.append(f"Маршрут по страницам: {example['page_route']}")
+        lines.append("")
+
+    return lines
+
+
+def generate_diploma_examples(
+    max_n,
+    families=None,
+    max_hamilton_check_n=None,
+    page_paths=None,
+    output_dir=None,
+    show=False,
+):
+    if max_n < 2:
+        raise ValueError("max_n должно быть не меньше 2.")
+    if max_hamilton_check_n is None:
+        max_hamilton_check_n = max_n
+    if families is None:
+        families = ALL_FAMILIES
+    if output_dir is None:
+        output_dir = reports_file_path(default_examples_dirname())
+
+    os.makedirs(output_dir, exist_ok=True)
+    selected = {}
+
+    for n, system in iter_generator_systems(max_n, families=families):
+        family = system["family"]
+        if family in selected:
+            continue
+
+        result = check_generator_system(
+            n,
+            system["generators"],
+            family=family,
+            parameters=system["parameters"],
+            k=system["k"],
+            max_hamilton_check_n=max_hamilton_check_n,
+            require_three_involution_conditions=(family == THREE_INVOLUTIONS),
+        )
+        if not is_representative_example(result):
+            continue
+
+        filename = (
+            f"{sanitize_filename_part(family)}_"
+            f"D{n}_{sanitize_filename_part(system['parameters'])}.png"
+        )
+        image_path = os.path.join(output_dir, filename)
+        graph = build_cayley_graph(
+            build_dihedral_group(n),
+            result["generators"],
+            n,
+        )
+        draw_graph(
+            graph,
+            result["generators"],
+            cycle=result["cycle"],
+            output_path=image_path,
+            show=show,
+        )
+
+        selected[family] = {
+            "result": result,
+            "image_path": image_path,
+            "page_route": format_optional_page_route(
+                n,
+                result["cycle"],
+                page_paths,
+            ),
+        }
+
+        if len(selected) == len(families):
+            break
+
+    examples = [selected[family] for family in families if family in selected]
+    missing_families = [family for family in families if family not in selected]
+    summary_path = os.path.join(output_dir, "examples_summary.txt")
+    with open(summary_path, "w", encoding="utf-8") as summary_file:
+        summary_file.write(
+            "\n".join(
+                build_examples_summary_lines(
+                    examples,
+                    missing_families,
+                    len(page_paths) if page_paths else 0,
+                )
+            )
+        )
+
+    return {
+        "output_dir": output_dir,
+        "summary_path": summary_path,
+        "examples": examples,
+        "missing_families": missing_families,
+    }
+
+
 def search_exceptions(max_iterations=None):
     print("=== Начинаем поиск исключений ===")
     try:
@@ -608,21 +801,7 @@ def experiment_mode():
     else:
         max_hamilton_n = max_n
 
-    print("\nВыберите семейство систем порождающих:")
-    print("1. Три инволюции с коммутирующей парой")
-    print("2. Поворот, обратный поворот и отражение")
-    print("3. Две отражающие симметрии")
-    print("4. Все семейства")
-    family_mode = input("Введите 1, 2, 3 или 4 [1]: ").strip()
-    if family_mode == "2":
-        families = [ROTATION_REFLECTION]
-    elif family_mode == "3":
-        families = [TWO_REFLECTIONS]
-    elif family_mode == "4":
-        families = ALL_FAMILIES
-    else:
-        families = [THREE_INVOLUTIONS]
-
+    families = read_families_selection()
     page_paths = read_optional_page_paths()
 
     raw_max_iterations = input(
@@ -675,18 +854,66 @@ def experiment_mode():
     print(f"Общее время: {format_duration(summary['total_elapsed_seconds'])}")
 
 
+def diploma_examples_mode():
+    print("=== Подготовка дипломных примеров ===")
+    try:
+        max_n = int(input("Введите максимальное n для поиска примеров: "))
+        if max_n < 2:
+            raise ValueError
+    except ValueError:
+        raise SystemExit("Максимальное n должно быть целым числом не меньше 2.")
+
+    raw_max_hamilton_n = input(
+        f"Введите максимальное n для поиска гамильтонова цикла [{max_n}]: "
+    ).strip()
+    if raw_max_hamilton_n:
+        try:
+            max_hamilton_n = int(raw_max_hamilton_n)
+            if max_hamilton_n < 2:
+                raise ValueError
+        except ValueError:
+            raise SystemExit(
+                "Максимальное n для поиска цикла должно быть целым числом не меньше 2."
+            )
+    else:
+        max_hamilton_n = max_n
+
+    families = read_families_selection(default_all=True)
+    page_paths = read_optional_page_paths()
+    result = generate_diploma_examples(
+        max_n=max_n,
+        families=families,
+        max_hamilton_check_n=max_hamilton_n,
+        page_paths=page_paths,
+    )
+
+    print("\nДипломные примеры подготовлены.")
+    print(f"Папка с примерами: {result['output_dir']}")
+    print(f"Описание примеров: {result['summary_path']}")
+    print(f"Найдено примеров: {len(result['examples'])}")
+    if result["missing_families"]:
+        missing = ", ".join(
+            FAMILY_LABELS.get(family, family)
+            for family in result["missing_families"]
+        )
+        print(f"Не найдены примеры для семейств: {missing}")
+
+
 if __name__ == "__main__":
     print("Выберите режим:")
     print("1. Поиск исключений (бесконечный)")
     print("2. Поиск исключений (ограниченное число итераций)")
     print("3. Одиночная проверка")
     print("4. CSV-эксперимент")
-    mode = input("Введите 1, 2, 3 или 4 [1]: ").strip()
+    print("5. Подготовка дипломных примеров")
+    mode = input("Введите 1, 2, 3, 4 или 5 [1]: ").strip()
 
     if mode == "3":
         single_mode()
     elif mode == "4":
         experiment_mode()
+    elif mode == "5":
+        diploma_examples_mode()
     elif mode == "2":
         try:
             max_iterations = int(input("Введите максимальное число итераций: "))
