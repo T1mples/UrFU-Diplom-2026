@@ -10,7 +10,7 @@ from algorithm import (
     build_dihedral_involution_generators,
     commutes,
 )
-from experiments import run_csv_experiment
+from experiments import run_csv_experiment, write_experiment_summary
 from generator_systems import ROTATION_REFLECTION, THREE_INVOLUTIONS
 from webgraph import (
     build_vertex_page_map,
@@ -104,6 +104,8 @@ class CoreLogicTest(unittest.TestCase):
             )
 
             self.assertEqual(summary["iterations"], 4)
+            self.assertEqual(summary["family_stats"][THREE_INVOLUTIONS]["iterations"], 4)
+            self.assertEqual(summary["n_stats"][4]["iterations"], 3)
             self.assertTrue(os.path.exists(output_path))
 
             with open(output_path, "r", encoding="utf-8", newline="") as csv_file:
@@ -117,6 +119,30 @@ class CoreLogicTest(unittest.TestCase):
             self.assertEqual(row["theorem_conditions"], "True")
             self.assertEqual(row["hamiltonian"], "True")
             self.assertIn("/page/e", row["web_route"])
+
+    def test_experiment_summary_writes_text_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = os.path.join(temp_dir, "experiment.csv")
+            summary_path = os.path.join(temp_dir, "summary.txt")
+
+            summary = run_csv_experiment(
+                main.check_generator_system,
+                max_n=4,
+                max_hamilton_check_n=4,
+                output_path=output_path,
+                families=[THREE_INVOLUTIONS],
+            )
+            saved_path = write_experiment_summary(summary, output_path=summary_path)
+
+            self.assertEqual(saved_path, summary_path)
+            self.assertTrue(os.path.exists(summary_path))
+
+            with open(summary_path, "r", encoding="utf-8") as summary_file:
+                text = summary_file.read()
+
+            self.assertIn("Сводный отчет эксперимента", text)
+            self.assertIn("Статистика по семействам", text)
+            self.assertIn("n=4", text)
 
     def test_csv_experiment_writes_custom_page_route(self):
         with tempfile.TemporaryDirectory() as temp_dir:

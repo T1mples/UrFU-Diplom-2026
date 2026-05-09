@@ -16,7 +16,7 @@ from algorithm import (
     generate_subgroup,
     is_involution,
 )
-from experiments import run_csv_experiment
+from experiments import run_csv_experiment, write_experiment_summary
 from generator_systems import (
     ALL_FAMILIES,
     FAMILY_LABELS,
@@ -648,9 +648,11 @@ def experiment_mode():
         families=families,
         page_paths=page_paths,
     )
+    summary_path = write_experiment_summary(summary)
 
     print("\nЭксперимент завершен.")
     print(f"CSV сохранен в {summary['output_path']}")
+    print(f"Сводный отчет сохранен в {summary_path}")
     print(
         "Семейства: "
         + ", ".join(FAMILY_LABELS[family] for family in summary["families"])
