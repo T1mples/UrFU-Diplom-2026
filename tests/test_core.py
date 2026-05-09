@@ -11,6 +11,7 @@ from algorithm import (
     commutes,
 )
 from experiments import run_csv_experiment
+from generator_systems import ROTATION_REFLECTION, THREE_INVOLUTIONS
 from webgraph import cycle_to_web_route
 
 
@@ -38,6 +39,21 @@ class CoreLogicTest(unittest.TestCase):
         self.assertFalse(result["theorem_conditions"])
         self.assertIn("совпадающие элементы", result["details"])
 
+    def test_generic_rotation_reflection_system(self):
+        result = main.check_generator_system(
+            4,
+            [(1, 0), (3, 0), (0, 1)],
+            family=ROTATION_REFLECTION,
+            parameters="a=1, b=0",
+            max_hamilton_check_n=4,
+        )
+
+        self.assertEqual(result["family"], ROTATION_REFLECTION)
+        self.assertTrue(result["family_conditions"])
+        self.assertFalse(result["three_involution_conditions"])
+        self.assertTrue(result["generates"])
+        self.assertTrue(result["hamiltonian"])
+
     def test_cycle_to_web_route_closes_cycle(self):
         cycle = [(0, 0), (0, 1), (2, 0)]
 
@@ -51,10 +67,11 @@ class CoreLogicTest(unittest.TestCase):
             output_path = os.path.join(temp_dir, "experiment.csv")
 
             summary = run_csv_experiment(
-                main.check_parameters,
+                main.check_generator_system,
                 max_n=4,
                 max_hamilton_check_n=4,
                 output_path=output_path,
+                families=[THREE_INVOLUTIONS],
             )
 
             self.assertEqual(summary["iterations"], 4)
@@ -65,11 +82,34 @@ class CoreLogicTest(unittest.TestCase):
 
             self.assertEqual(len(rows), 4)
             row = next(row for row in rows if row["n"] == "4" and row["k"] == "1")
+            self.assertEqual(row["family"], THREE_INVOLUTIONS)
             self.assertEqual(row["generators"], "r0s, r2s, r1s")
             self.assertEqual(row["generator_conditions"], "True")
             self.assertEqual(row["theorem_conditions"], "True")
             self.assertEqual(row["hamiltonian"], "True")
             self.assertIn("/page/e", row["web_route"])
+
+    def test_csv_experiment_supports_multiple_families(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = os.path.join(temp_dir, "experiment.csv")
+
+            summary = run_csv_experiment(
+                main.check_generator_system,
+                max_n=4,
+                max_hamilton_check_n=4,
+                output_path=output_path,
+                families=[THREE_INVOLUTIONS, ROTATION_REFLECTION],
+                max_iterations=8,
+            )
+
+            self.assertEqual(summary["iterations"], 8)
+
+            with open(output_path, "r", encoding="utf-8", newline="") as csv_file:
+                rows = list(csv.DictReader(csv_file))
+
+            self.assertTrue(
+                any(row["family"] == ROTATION_REFLECTION for row in rows)
+            )
 
     def test_draw_graph_writes_image(self):
         result = main.check_parameters(4, 1, max_hamilton_check_n=4)

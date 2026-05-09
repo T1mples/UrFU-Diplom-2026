@@ -17,6 +17,13 @@ from algorithm import (
     is_involution,
 )
 from experiments import run_csv_experiment
+from generator_systems import (
+    ALL_FAMILIES,
+    FAMILY_LABELS,
+    ROTATION_REFLECTION,
+    THREE_INVOLUTIONS,
+    TWO_REFLECTIONS,
+)
 from webgraph import format_web_route
 
 
@@ -149,7 +156,7 @@ def draw_graph(graph, generators, cycle=None, output_path=None, show=True):
 
     plt.legend(
         handles=legend_handles,
-        title="Инволюции",
+        title="Генераторы",
         loc="upper left",
         bbox_to_anchor=(1.02, 1.0),
         borderaxespad=0,
@@ -241,30 +248,52 @@ def write_report(
     print(f"Отчет сохранен в {filename_full}")
 
 
-def check_parameters(n, k, max_hamilton_check_n=None):
-    generators = build_dihedral_involution_generators(n, k)
+def check_generator_system(
+    n,
+    generators,
+    family="custom",
+    parameters="",
+    k="",
+    max_hamilton_check_n=None,
+    require_three_involution_conditions=False,
+):
     group_size = 2 * n
     involutions = [is_involution(generator, n) for generator in generators]
     all_involutions = all(involutions)
     distinct_generators = len(set(generators)) == len(generators)
-    commuting_pair = commutes(generators[0], generators[1], n)
-    generator_conditions = all_involutions and distinct_generators and commuting_pair
+    commuting_pair = (
+        len(generators) >= 2 and commutes(generators[0], generators[1], n)
+    )
+    contains_identity = any(generator == (0, 0) for generator in generators)
+    family_conditions = distinct_generators and not contains_identity
+    three_involution_conditions = (
+        len(generators) == 3
+        and all_involutions
+        and distinct_generators
+        and commuting_pair
+    )
+    generator_conditions = three_involution_conditions
     closure = generate_subgroup(generators, n)
     subgroup_size = len(closure)
     generates = len(closure) == group_size
-    theorem_conditions = generator_conditions and generates
+    theorem_conditions = three_involution_conditions and generates
     hamiltonian = False
     cycle = None
     cycle_allowed_by_limit = max_hamilton_check_n is None or n <= max_hamilton_check_n
     cycle_checked = cycle_allowed_by_limit and generates
     details = []
 
-    if not all_involutions:
-        details.append("Один или несколько генераторов не являются инволюцией.")
     if not distinct_generators:
-        details.append("Среди трех генераторов есть совпадающие элементы.")
-    if not commuting_pair:
-        details.append("Первые две инволюции g1 и g2 не коммутируют.")
+        details.append("Среди генераторов есть совпадающие элементы.")
+    if contains_identity:
+        details.append("Система содержит нейтральный элемент.")
+    if require_three_involution_conditions:
+        if len(generators) != 3:
+            details.append("Для этой проверки требуется ровно три генератора.")
+        if not all_involutions:
+            details.append("Один или несколько генераторов не являются инволюцией.")
+        if len(generators) >= 2 and not commuting_pair:
+            details.append("Первые две инволюции g1 и g2 не коммутируют.")
     if not generates:
         details.append(f"Генераторы порождают подгруппу размера {subgroup_size}, а не D_{n}.")
 
@@ -276,12 +305,18 @@ def check_parameters(n, k, max_hamilton_check_n=None):
     return {
         "n": n,
         "k": k,
+        "family": family,
+        "parameters": parameters,
         "generators": generators,
+        "generator_count": len(generators),
         "group_size": group_size,
         "subgroup_size": subgroup_size,
         "involutions": involutions,
         "distinct_generators": distinct_generators,
+        "contains_identity": contains_identity,
         "commuting_pair": commuting_pair,
+        "family_conditions": family_conditions,
+        "three_involution_conditions": three_involution_conditions,
         "generator_conditions": generator_conditions,
         "theorem_conditions": theorem_conditions,
         "generates": generates,
@@ -290,6 +325,19 @@ def check_parameters(n, k, max_hamilton_check_n=None):
         "cycle": cycle,
         "details": " ".join(details) if details else None,
     }
+
+
+def check_parameters(n, k, max_hamilton_check_n=None):
+    generators = build_dihedral_involution_generators(n, k)
+    return check_generator_system(
+        n,
+        generators,
+        family=THREE_INVOLUTIONS,
+        parameters=f"k={k}",
+        k=k,
+        max_hamilton_check_n=max_hamilton_check_n,
+        require_three_involution_conditions=True,
+    )
 
 
 def search_exceptions(max_iterations=None):
@@ -523,6 +571,21 @@ def experiment_mode():
     else:
         max_hamilton_n = max_n
 
+    print("\nВыберите семейство систем порождающих:")
+    print("1. Три инволюции с коммутирующей парой")
+    print("2. Поворот, обратный поворот и отражение")
+    print("3. Две отражающие симметрии")
+    print("4. Все семейства")
+    family_mode = input("Введите 1, 2, 3 или 4 [1]: ").strip()
+    if family_mode == "2":
+        families = [ROTATION_REFLECTION]
+    elif family_mode == "3":
+        families = [TWO_REFLECTIONS]
+    elif family_mode == "4":
+        families = ALL_FAMILIES
+    else:
+        families = [THREE_INVOLUTIONS]
+
     raw_max_iterations = input(
         "Введите максимальное число итераций или оставьте пустым: "
     ).strip()
@@ -539,17 +602,26 @@ def experiment_mode():
         max_iterations = None
 
     summary = run_csv_experiment(
-        check_parameters,
+        check_generator_system,
         max_n=max_n,
         max_hamilton_check_n=max_hamilton_n,
         max_iterations=max_iterations,
+        families=families,
     )
 
     print("\nЭксперимент завершен.")
     print(f"CSV сохранен в {summary['output_path']}")
+    print(
+        "Семейства: "
+        + ", ".join(FAMILY_LABELS[family] for family in summary["families"])
+    )
     print(f"Итераций выполнено: {summary['iterations']}")
     print(
-        "Систем с базовыми условиями на генераторы: "
+        "Систем без дубликатов и нейтрального элемента: "
+        f"{summary['family_conditions_count']}"
+    )
+    print(
+        "Систем с условиями теоремы на генераторы: "
         f"{summary['generator_conditions_count']}"
     )
     print(f"Порождающих систем: {summary['generating_count']}")

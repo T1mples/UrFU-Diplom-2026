@@ -4,17 +4,23 @@ import os
 import time
 
 from algorithm import element_to_str
+from generator_systems import THREE_INVOLUTIONS, iter_generator_systems
 from webgraph import format_web_route
 
 
 CSV_FIELDNAMES = [
     "iteration",
+    "family",
+    "parameters",
     "n",
     "k",
+    "generator_count",
     "group_size",
     "subgroup_size",
     "generators",
+    "family_conditions",
     "generator_conditions",
+    "three_involution_conditions",
     "theorem_conditions",
     "generates",
     "cycle_checked",
@@ -52,12 +58,17 @@ def build_experiment_row(iteration, result, elapsed_seconds):
     cycle = result.get("cycle")
     return {
         "iteration": iteration,
+        "family": result["family"],
+        "parameters": result["parameters"],
         "n": result["n"],
         "k": result["k"],
+        "generator_count": result["generator_count"],
         "group_size": result["group_size"],
         "subgroup_size": result["subgroup_size"],
         "generators": format_generators(result["generators"]),
+        "family_conditions": result["family_conditions"],
         "generator_conditions": result["generator_conditions"],
+        "three_involution_conditions": result["three_involution_conditions"],
         "theorem_conditions": result["theorem_conditions"],
         "generates": result["generates"],
         "cycle_checked": result["cycle_checked"],
@@ -71,17 +82,20 @@ def build_experiment_row(iteration, result, elapsed_seconds):
 
 
 def run_csv_experiment(
-    check_parameters,
+    check_generator_system,
     max_n,
     max_hamilton_check_n=None,
     max_iterations=None,
     output_path=None,
+    families=None,
 ):
     if max_n < 2:
         raise ValueError("max_n должно быть не меньше 2.")
 
     if max_hamilton_check_n is None:
         max_hamilton_check_n = max_n
+    if families is None:
+        families = [THREE_INVOLUTIONS]
 
     if output_path is None:
         output_path = reports_path(default_experiment_filename())
@@ -92,7 +106,9 @@ def run_csv_experiment(
 
     summary = {
         "output_path": output_path,
+        "families": list(families),
         "iterations": 0,
+        "family_conditions_count": 0,
         "generator_conditions_count": 0,
         "theorem_conditions_count": 0,
         "generating_count": 0,
@@ -105,39 +121,46 @@ def run_csv_experiment(
         writer = csv.DictWriter(csv_file, fieldnames=CSV_FIELDNAMES)
         writer.writeheader()
 
-        for n in range(2, max_n + 1, 2):
-            for k in range(1, n):
-                if max_iterations is not None and summary["iterations"] >= max_iterations:
-                    return summary
+        for n, system in iter_generator_systems(max_n, families=families):
+            if max_iterations is not None and summary["iterations"] >= max_iterations:
+                return summary
 
-                started_at = time.perf_counter()
-                result = check_parameters(
-                    n,
-                    k,
-                    max_hamilton_check_n=max_hamilton_check_n,
+            started_at = time.perf_counter()
+            result = check_generator_system(
+                n,
+                system["generators"],
+                family=system["family"],
+                parameters=system["parameters"],
+                k=system["k"],
+                max_hamilton_check_n=max_hamilton_check_n,
+                require_three_involution_conditions=(
+                    system["family"] == THREE_INVOLUTIONS
+                ),
+            )
+            elapsed_seconds = time.perf_counter() - started_at
+
+            summary["iterations"] += 1
+            summary["total_elapsed_seconds"] += elapsed_seconds
+
+            if result["family_conditions"]:
+                summary["family_conditions_count"] += 1
+            if result["generator_conditions"]:
+                summary["generator_conditions_count"] += 1
+            if result["theorem_conditions"]:
+                summary["theorem_conditions_count"] += 1
+            if result["generates"]:
+                summary["generating_count"] += 1
+            if result["cycle_checked"]:
+                summary["checked_hamiltonian_count"] += 1
+            if result["hamiltonian"]:
+                summary["hamiltonian_count"] += 1
+
+            writer.writerow(
+                build_experiment_row(
+                    summary["iterations"],
+                    result,
+                    elapsed_seconds,
                 )
-                elapsed_seconds = time.perf_counter() - started_at
-
-                summary["iterations"] += 1
-                summary["total_elapsed_seconds"] += elapsed_seconds
-
-                if result["generator_conditions"]:
-                    summary["generator_conditions_count"] += 1
-                if result["theorem_conditions"]:
-                    summary["theorem_conditions_count"] += 1
-                if result["generates"]:
-                    summary["generating_count"] += 1
-                if result["cycle_checked"]:
-                    summary["checked_hamiltonian_count"] += 1
-                if result["hamiltonian"]:
-                    summary["hamiltonian_count"] += 1
-
-                writer.writerow(
-                    build_experiment_row(
-                        summary["iterations"],
-                        result,
-                        elapsed_seconds,
-                    )
-                )
+            )
 
     return summary
