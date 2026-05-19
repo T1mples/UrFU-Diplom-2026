@@ -1,3 +1,6 @@
+import time
+
+
 def dihedral_multiply(g, h, n):
     k1, f1 = g
     k2, f2 = h
@@ -42,22 +45,54 @@ def build_cayley_graph(group, generators, n):
     return graph
 
 
-def find_hamiltonian_cycle(graph):
+def find_hamiltonian_cycle_with_stats(graph, time_limit_seconds=None):
     nodes = list(graph.keys())
     n = len(nodes)
+    started_at = time.perf_counter()
+    states_checked = 0
+
+    def elapsed_seconds():
+        return time.perf_counter() - started_at
+
+    def build_result(cycle, status):
+        return {
+            "cycle": cycle,
+            "status": status,
+            "states_checked": states_checked,
+            "elapsed_seconds": elapsed_seconds(),
+        }
+
+    if time_limit_seconds is not None and time_limit_seconds <= 0:
+        return build_result(None, "timeout")
+
+    def time_limit_exceeded():
+        return (
+            time_limit_seconds is not None
+            and elapsed_seconds() >= time_limit_seconds
+        )
+
     for start in nodes:
+        if time_limit_exceeded():
+            return build_result(None, "timeout")
         stack = [([start], {start})]
         while stack:
+            if time_limit_exceeded():
+                return build_result(None, "timeout")
             path, visited = stack.pop()
+            states_checked += 1
             if len(path) == n:
                 if path[0] in graph[path[-1]]:
-                    return path
+                    return build_result(path, "found")
                 continue
 
             for neighbor in reversed(graph[path[-1]]):
                 if neighbor not in visited:
                     stack.append((path + [neighbor], visited | {neighbor}))
-    return None
+    return build_result(None, "not_found")
+
+
+def find_hamiltonian_cycle(graph):
+    return find_hamiltonian_cycle_with_stats(graph)["cycle"]
 
 
 def build_dihedral_involution_generators(n, third_shift=1):

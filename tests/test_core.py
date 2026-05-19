@@ -9,6 +9,7 @@ from algorithm import (
     build_dihedral_group,
     build_dihedral_involution_generators,
     commutes,
+    find_hamiltonian_cycle_with_stats,
 )
 from experiments import run_csv_experiment, write_experiment_summary
 from generator_systems import ROTATION_REFLECTION, THREE_INVOLUTIONS
@@ -35,7 +36,31 @@ class CoreLogicTest(unittest.TestCase):
         self.assertTrue(result["generates"])
         self.assertTrue(result["theorem_conditions"])
         self.assertTrue(result["hamiltonian"])
+        self.assertEqual(result["cycle_status"], "found")
+        self.assertGreater(result["cycle_states_checked"], 0)
         self.assertIsNotNone(result["cycle"])
+
+    def test_hamiltonian_search_reports_timeout(self):
+        generators = build_dihedral_involution_generators(4, 1)
+        graph = build_cayley_graph(build_dihedral_group(4), generators, 4)
+
+        result = find_hamiltonian_cycle_with_stats(graph, time_limit_seconds=0)
+
+        self.assertEqual(result["status"], "timeout")
+        self.assertIsNone(result["cycle"])
+
+    def test_check_parameters_keeps_timeout_separate_from_not_found(self):
+        result = main.check_parameters(
+            4,
+            1,
+            max_hamilton_check_n=4,
+            max_hamilton_time_seconds=0,
+        )
+
+        self.assertTrue(result["cycle_checked"])
+        self.assertEqual(result["cycle_status"], "timeout")
+        self.assertFalse(result["hamiltonian"])
+        self.assertIsNone(result["cycle"])
 
     def test_duplicate_generator_is_reported(self):
         result = main.check_parameters(4, 2, max_hamilton_check_n=4)
@@ -117,8 +142,32 @@ class CoreLogicTest(unittest.TestCase):
             self.assertEqual(row["generators"], "r0s, r2s, r1s")
             self.assertEqual(row["generator_conditions"], "True")
             self.assertEqual(row["theorem_conditions"], "True")
+            self.assertEqual(row["cycle_status"], "found")
+            self.assertGreater(int(row["cycle_states_checked"]), 0)
             self.assertEqual(row["hamiltonian"], "True")
             self.assertIn("/page/e", row["web_route"])
+
+    def test_csv_experiment_writes_timeout_status(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = os.path.join(temp_dir, "experiment.csv")
+
+            summary = run_csv_experiment(
+                main.check_generator_system,
+                max_n=4,
+                max_hamilton_check_n=4,
+                max_hamilton_time_seconds=0,
+                max_iterations=1,
+                output_path=output_path,
+                families=[THREE_INVOLUTIONS],
+            )
+
+            self.assertEqual(summary["timeout_count"], 1)
+
+            with open(output_path, "r", encoding="utf-8", newline="") as csv_file:
+                rows = list(csv.DictReader(csv_file))
+
+            self.assertEqual(rows[0]["cycle_status"], "timeout")
+            self.assertEqual(rows[0]["max_hamilton_time_seconds"], "0.000000")
 
     def test_experiment_summary_writes_text_file(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -142,6 +191,7 @@ class CoreLogicTest(unittest.TestCase):
 
             self.assertIn("Сводный отчет эксперимента", text)
             self.assertIn("Статистика по семействам", text)
+            self.assertIn("таймаут", text)
             self.assertIn("n=4", text)
 
     def test_csv_experiment_writes_custom_page_route(self):

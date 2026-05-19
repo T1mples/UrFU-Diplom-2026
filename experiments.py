@@ -24,6 +24,10 @@ CSV_FIELDNAMES = [
     "theorem_conditions",
     "generates",
     "cycle_checked",
+    "cycle_status",
+    "cycle_states_checked",
+    "cycle_elapsed_seconds",
+    "max_hamilton_time_seconds",
     "hamiltonian",
     "cycle_length",
     "elapsed_seconds",
@@ -74,6 +78,9 @@ def empty_stats():
         "generating_count": 0,
         "checked_hamiltonian_count": 0,
         "hamiltonian_count": 0,
+        "not_found_count": 0,
+        "timeout_count": 0,
+        "skipped_count": 0,
         "total_elapsed_seconds": 0.0,
         "max_elapsed_seconds": 0.0,
     }
@@ -96,6 +103,14 @@ def update_stats(stats, result, elapsed_seconds):
         stats["checked_hamiltonian_count"] += 1
     if result["hamiltonian"]:
         stats["hamiltonian_count"] += 1
+
+    cycle_status = result.get("cycle_status", "skipped")
+    if cycle_status == "not_found":
+        stats["not_found_count"] += 1
+    elif cycle_status == "timeout":
+        stats["timeout_count"] += 1
+    elif cycle_status == "skipped":
+        stats["skipped_count"] += 1
 
 
 def build_experiment_row(iteration, result, elapsed_seconds, page_paths=None):
@@ -124,6 +139,13 @@ def build_experiment_row(iteration, result, elapsed_seconds, page_paths=None):
         "theorem_conditions": result["theorem_conditions"],
         "generates": result["generates"],
         "cycle_checked": result["cycle_checked"],
+        "cycle_status": result["cycle_status"],
+        "cycle_states_checked": result["cycle_states_checked"],
+        "cycle_elapsed_seconds": f"{result['cycle_elapsed_seconds']:.6f}",
+        "max_hamilton_time_seconds": (
+            "" if result["max_hamilton_time_seconds"] is None
+            else f"{result['max_hamilton_time_seconds']:.6f}"
+        ),
         "hamiltonian": result["hamiltonian"],
         "cycle_length": len(cycle) if cycle else 0,
         "elapsed_seconds": f"{elapsed_seconds:.6f}",
@@ -138,6 +160,7 @@ def run_csv_experiment(
     check_generator_system,
     max_n,
     max_hamilton_check_n=None,
+    max_hamilton_time_seconds=None,
     max_iterations=None,
     output_path=None,
     families=None,
@@ -162,6 +185,7 @@ def run_csv_experiment(
         "output_path": output_path,
         "families": list(families),
         "page_paths_count": len(page_paths) if page_paths else 0,
+        "max_hamilton_time_seconds": max_hamilton_time_seconds,
         "family_stats": {},
         "n_stats": {},
         **empty_stats(),
@@ -183,6 +207,7 @@ def run_csv_experiment(
                 parameters=system["parameters"],
                 k=system["k"],
                 max_hamilton_check_n=max_hamilton_check_n,
+                max_hamilton_time_seconds=max_hamilton_time_seconds,
                 require_three_involution_conditions=(
                     system["family"] == THREE_INVOLUTIONS
                 ),
@@ -226,6 +251,9 @@ def build_stats_line(label, stats):
         f"порождают={stats['generating_count']}; "
         f"проверено на цикл={stats['checked_hamiltonian_count']}; "
         f"с циклом={stats['hamiltonian_count']}; "
+        f"без цикла={stats['not_found_count']}; "
+        f"таймаут={stats['timeout_count']}; "
+        f"пропущено={stats['skipped_count']}; "
         f"среднее время={format_average_elapsed(stats)} с; "
         f"максимальное время={stats['max_elapsed_seconds']:.6f} с"
     )
@@ -243,6 +271,12 @@ def build_experiment_summary_lines(summary):
         f"CSV-файл: {summary['output_path']}",
         f"Семейства: {', '.join(family_labels)}",
         f"Страниц для сопоставления: {summary['page_paths_count']}",
+        "Лимит времени на один поиск цикла: "
+        + (
+            "не задан"
+            if summary["max_hamilton_time_seconds"] is None
+            else f"{summary['max_hamilton_time_seconds']:.3f} с"
+        ),
         "",
         "Общая статистика:",
         build_stats_line("Все системы", summary),

@@ -12,7 +12,7 @@ from algorithm import (
     build_dihedral_involution_generators,
     commutes,
     element_to_str,
-    find_hamiltonian_cycle,
+    find_hamiltonian_cycle_with_stats,
     generate_subgroup,
     is_involution,
 )
@@ -110,6 +110,37 @@ def read_optional_page_paths():
 
     print(f"Загружено страниц: {len(page_paths)}")
     return page_paths
+
+
+def read_optional_time_limit():
+    try:
+        raw_limit = input(
+            "Введите лимит времени на поиск цикла в секундах или оставьте пустым: "
+        ).strip()
+    except EOFError:
+        return None
+
+    if not raw_limit:
+        return None
+
+    try:
+        time_limit = float(raw_limit)
+        if time_limit <= 0:
+            raise ValueError
+    except ValueError:
+        raise SystemExit("Лимит времени должен быть положительным числом.")
+
+    return time_limit
+
+
+def format_cycle_status(status):
+    labels = {
+        "found": "найден",
+        "not_found": "не найден",
+        "skipped": "пропущен",
+        "timeout": "превышен лимит времени",
+    }
+    return labels.get(status, status)
 
 
 def format_element_route(cycle):
@@ -268,6 +299,8 @@ def write_report(
     max_hamilton_check_n=None,
     skipped_invalid_conditions=0,
     last_hamiltonian=None,
+    timed_out_hamiltonian=0,
+    max_hamilton_time_seconds=None,
 ):
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     lines = [
@@ -279,6 +312,7 @@ def write_report(
         f"Пропущено непорождающих систем: {skipped_non_generating}",
         f"Проверено на гамильтоновость: {checked_hamiltonian}",
         f"С гамильтоновым циклом: {hamilton_count}",
+        f"Превышен лимит времени поиска цикла: {timed_out_hamiltonian}",
     ]
 
     if exception_info:
@@ -310,6 +344,11 @@ def write_report(
         lines.append(
             f"Проверка гамильтонова цикла выполнялась для n <= {max_hamilton_check_n}."
         )
+    if max_hamilton_time_seconds is not None:
+        lines.append(
+            "Лимит времени на один поиск гамильтонова цикла: "
+            f"{max_hamilton_time_seconds:.3f} с."
+        )
 
     if os.path.isabs(filename):
         filename_full = filename
@@ -333,6 +372,7 @@ def check_generator_system(
     parameters="",
     k="",
     max_hamilton_check_n=None,
+    max_hamilton_time_seconds=None,
     require_three_involution_conditions=False,
 ):
     group_size = 2 * n
@@ -359,6 +399,9 @@ def check_generator_system(
     cycle = None
     cycle_allowed_by_limit = max_hamilton_check_n is None or n <= max_hamilton_check_n
     cycle_checked = cycle_allowed_by_limit and generates
+    cycle_status = "skipped"
+    cycle_states_checked = 0
+    cycle_elapsed_seconds = 0.0
     details = []
 
     if not distinct_generators:
@@ -377,8 +420,15 @@ def check_generator_system(
 
     if cycle_checked and generates:
         graph = build_cayley_graph(build_dihedral_group(n), generators, n)
-        cycle = find_hamiltonian_cycle(graph)
-        hamiltonian = cycle is not None
+        cycle_result = find_hamiltonian_cycle_with_stats(
+            graph,
+            time_limit_seconds=max_hamilton_time_seconds,
+        )
+        cycle = cycle_result["cycle"]
+        cycle_status = cycle_result["status"]
+        cycle_states_checked = cycle_result["states_checked"]
+        cycle_elapsed_seconds = cycle_result["elapsed_seconds"]
+        hamiltonian = cycle_status == "found"
 
     return {
         "n": n,
@@ -400,12 +450,21 @@ def check_generator_system(
         "generates": generates,
         "hamiltonian": hamiltonian,
         "cycle_checked": cycle_checked,
+        "cycle_status": cycle_status,
+        "cycle_states_checked": cycle_states_checked,
+        "cycle_elapsed_seconds": cycle_elapsed_seconds,
+        "max_hamilton_time_seconds": max_hamilton_time_seconds,
         "cycle": cycle,
         "details": " ".join(details) if details else None,
     }
 
 
-def check_parameters(n, k, max_hamilton_check_n=None):
+def check_parameters(
+    n,
+    k,
+    max_hamilton_check_n=None,
+    max_hamilton_time_seconds=None,
+):
     generators = build_dihedral_involution_generators(n, k)
     return check_generator_system(
         n,
@@ -414,6 +473,7 @@ def check_parameters(n, k, max_hamilton_check_n=None):
         parameters=f"k={k}",
         k=k,
         max_hamilton_check_n=max_hamilton_check_n,
+        max_hamilton_time_seconds=max_hamilton_time_seconds,
         require_three_involution_conditions=True,
     )
 
@@ -458,6 +518,9 @@ def build_examples_summary_lines(examples, missing_families, page_paths_count):
                 f"Генераторы: {format_generators(result['generators'])}",
                 f"Размер группы: {result['group_size']}",
                 f"Размер порожденной подгруппы: {result['subgroup_size']}",
+                f"Статус поиска цикла: {format_cycle_status(result['cycle_status'])}",
+                f"Просмотрено состояний поиска: {result['cycle_states_checked']}",
+                f"Время поиска цикла: {result['cycle_elapsed_seconds']:.6f} с",
                 f"Изображение: {example['image_path']}",
                 f"Гамильтонов цикл: {format_element_route(result['cycle'])}",
                 f"Модельный веб-маршрут: {format_web_route(result['cycle'])}",
@@ -474,6 +537,7 @@ def generate_diploma_examples(
     max_n,
     families=None,
     max_hamilton_check_n=None,
+    max_hamilton_time_seconds=None,
     page_paths=None,
     output_dir=None,
     show=False,
@@ -502,6 +566,7 @@ def generate_diploma_examples(
             parameters=system["parameters"],
             k=system["k"],
             max_hamilton_check_n=max_hamilton_check_n,
+            max_hamilton_time_seconds=max_hamilton_time_seconds,
             require_three_involution_conditions=(family == THREE_INVOLUTIONS),
         )
         if not is_representative_example(result):
@@ -572,9 +637,16 @@ def search_exceptions(max_iterations=None):
     print(
         f"Проверка гамильтонова цикла будет выполняться для n <= {max_n}"
     )
+    max_hamilton_time_seconds = read_optional_time_limit()
+    if max_hamilton_time_seconds is not None:
+        print(
+            "Лимит времени на один поиск гамильтонова цикла: "
+            f"{max_hamilton_time_seconds:.3f} с"
+        )
 
     iterations = 0
     hamilton_count = 0
+    timed_out_hamiltonian = 0
     skipped_invalid_conditions = 0
     skipped_non_generating = 0
     checked_hamiltonian = 0
@@ -595,7 +667,12 @@ def search_exceptions(max_iterations=None):
                     raise StopIteration
 
                 started_at = time.perf_counter()
-                params = check_parameters(n, k, max_hamilton_check_n=max_n)
+                params = check_parameters(
+                    n,
+                    k,
+                    max_hamilton_check_n=max_n,
+                    max_hamilton_time_seconds=max_hamilton_time_seconds,
+                )
                 iteration_elapsed = time.perf_counter() - started_at
 
                 iterations += 1
@@ -632,12 +709,24 @@ def search_exceptions(max_iterations=None):
 
                 if params["cycle_checked"]:
                     checked_hamiltonian += 1
+                    print(
+                        "  Статус поиска цикла: "
+                        f"{format_cycle_status(params['cycle_status'])}; "
+                        f"состояний: {params['cycle_states_checked']}; "
+                        f"время поиска: {params['cycle_elapsed_seconds']:.6f} с."
+                    )
                     if params["hamiltonian"]:
                         hamilton_count += 1
                         last_hamiltonian = params
                         print("  Проверка гамильтонова цикла: найден.")
                         print(f"  Цикл: {format_element_route(params['cycle'])}")
                         print(f"  Веб-маршрут: {format_web_route(params['cycle'])}")
+                    elif params["cycle_status"] == "timeout":
+                        timed_out_hamiltonian += 1
+                        print(
+                            "  Поиск остановлен по лимиту времени; "
+                            "это не считается контрпримером."
+                        )
                     else:
                         print("  Проверка гамильтонова цикла: не найден.")
                         exception_info = {
@@ -672,6 +761,8 @@ def search_exceptions(max_iterations=None):
             max_n,
             skipped_invalid_conditions,
             last_hamiltonian,
+            timed_out_hamiltonian=timed_out_hamiltonian,
+            max_hamilton_time_seconds=max_hamilton_time_seconds,
         )
         return
     except StopIteration:
@@ -693,6 +784,8 @@ def search_exceptions(max_iterations=None):
             max_n,
             skipped_invalid_conditions,
             last_hamiltonian,
+            timed_out_hamiltonian=timed_out_hamiltonian,
+            max_hamilton_time_seconds=max_hamilton_time_seconds,
         )
         return
 
@@ -717,7 +810,12 @@ def single_mode():
     if not 1 <= k <= n - 1:
         raise SystemExit(f"k должно быть целым числом от 1 до {n - 1}.")
 
-    params = check_parameters(n, k)
+    max_hamilton_time_seconds = read_optional_time_limit()
+    params = check_parameters(
+        n,
+        k,
+        max_hamilton_time_seconds=max_hamilton_time_seconds,
+    )
     generators = params["generators"]
 
     print("\nГенераторы (инволюции):")
@@ -750,6 +848,16 @@ def single_mode():
         print("Генераторы порождают всю группу.")
     else:
         print("Генераторы не порождают всю группу.")
+
+    print("\nПоиск гамильтонова цикла:")
+    print(f"  Статус: {format_cycle_status(params['cycle_status'])}")
+    print(f"  Просмотрено состояний: {params['cycle_states_checked']}")
+    print(f"  Время поиска: {params['cycle_elapsed_seconds']:.6f} с")
+    if params["max_hamilton_time_seconds"] is not None:
+        print(
+            "  Лимит времени: "
+            f"{params['max_hamilton_time_seconds']:.3f} с"
+        )
 
     graph = build_cayley_graph(group, generators, n)
     cycle = params["cycle"]
@@ -803,6 +911,7 @@ def experiment_mode():
 
     families = read_families_selection()
     page_paths = read_optional_page_paths()
+    max_hamilton_time_seconds = read_optional_time_limit()
 
     raw_max_iterations = input(
         "Введите максимальное число итераций или оставьте пустым: "
@@ -823,6 +932,7 @@ def experiment_mode():
         check_generator_system,
         max_n=max_n,
         max_hamilton_check_n=max_hamilton_n,
+        max_hamilton_time_seconds=max_hamilton_time_seconds,
         max_iterations=max_iterations,
         families=families,
         page_paths=page_paths,
@@ -851,6 +961,9 @@ def experiment_mode():
     print(f"Систем, удовлетворяющих условиям теоремы: {summary['theorem_conditions_count']}")
     print(f"Проверено на гамильтоновость: {summary['checked_hamiltonian_count']}")
     print(f"С гамильтоновым циклом: {summary['hamiltonian_count']}")
+    print(f"Без найденного цикла: {summary['not_found_count']}")
+    print(f"С превышением лимита времени: {summary['timeout_count']}")
+    print(f"С пропущенной проверкой цикла: {summary['skipped_count']}")
     print(f"Общее время: {format_duration(summary['total_elapsed_seconds'])}")
 
 
@@ -880,10 +993,12 @@ def diploma_examples_mode():
 
     families = read_families_selection(default_all=True)
     page_paths = read_optional_page_paths()
+    max_hamilton_time_seconds = read_optional_time_limit()
     result = generate_diploma_examples(
         max_n=max_n,
         families=families,
         max_hamilton_check_n=max_hamilton_n,
+        max_hamilton_time_seconds=max_hamilton_time_seconds,
         page_paths=page_paths,
     )
 
