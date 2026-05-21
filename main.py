@@ -16,6 +16,7 @@ from algorithm import (
     generate_subgroup,
     is_involution,
 )
+from crawler import crawl_site_pages, save_page_list
 from experiments import run_csv_experiment, write_experiment_summary
 from generator_systems import (
     ALL_FAMILIES,
@@ -52,6 +53,10 @@ def default_graph_image_filename(n, k):
 
 def default_examples_dirname():
     return f"diploma_examples_{datetime.datetime.now():%Y%m%d_%H%M%S}"
+
+
+def default_site_pages_filename():
+    return f"site_pages_{datetime.datetime.now():%Y%m%d_%H%M%S}.txt"
 
 
 def sanitize_filename_part(value):
@@ -131,6 +136,14 @@ def read_optional_time_limit():
         raise SystemExit("Лимит времени должен быть положительным числом.")
 
     return time_limit
+
+
+def read_yes_no(prompt, default=True):
+    default_label = "д" if default else "н"
+    answer = input(f"{prompt} [д/н, {default_label}]: ").strip().lower()
+    if not answer:
+        return default
+    return answer in ("д", "да", "y", "yes", "1")
 
 
 def format_cycle_status(status):
@@ -1014,6 +1027,83 @@ def diploma_examples_mode():
         print(f"Не найдены примеры для семейств: {missing}")
 
 
+def crawl_site_mode():
+    print("=== Сбор страниц существующего сайта ===")
+    start_url = input("Введите стартовый URL сайта: ").strip()
+    if not start_url:
+        raise SystemExit("Стартовый URL не может быть пустым.")
+
+    try:
+        max_pages = int(input("Введите максимальное число страниц для сбора: "))
+        if max_pages <= 0:
+            raise ValueError
+    except ValueError:
+        raise SystemExit("Число страниц должно быть положительным целым числом.")
+
+    same_domain_only = read_yes_no("Оставлять только страницы того же домена?", True)
+
+    raw_max_depth = input(
+        "Введите максимальную глубину обхода или оставьте пустым: "
+    ).strip()
+    if raw_max_depth:
+        try:
+            max_depth = int(raw_max_depth)
+            if max_depth < 0:
+                raise ValueError
+        except ValueError:
+            raise SystemExit("Глубина обхода должна быть неотрицательным числом.")
+    else:
+        max_depth = None
+
+    raw_timeout = input("Введите таймаут загрузки страницы в секундах [10]: ").strip()
+    if raw_timeout:
+        try:
+            timeout_seconds = float(raw_timeout)
+            if timeout_seconds <= 0:
+                raise ValueError
+        except ValueError:
+            raise SystemExit("Таймаут должен быть положительным числом.")
+    else:
+        timeout_seconds = 10
+
+    raw_output_path = input(
+        "Введите путь для сохранения файла страниц или оставьте пустым: "
+    ).strip()
+    output_path = raw_output_path or reports_file_path(default_site_pages_filename())
+
+    print("\nСобираю страницы сайта...")
+    pages = crawl_site_pages(
+        start_url,
+        max_pages=max_pages,
+        same_domain_only=same_domain_only,
+        timeout_seconds=timeout_seconds,
+        max_depth=max_depth,
+    )
+
+    if not pages:
+        raise SystemExit(
+            "Не удалось собрать страницы. Проверьте URL, доступность сайта "
+            "и параметры обхода."
+        )
+
+    dirname = os.path.dirname(output_path)
+    if dirname:
+        os.makedirs(dirname, exist_ok=True)
+    save_page_list(pages, output_path)
+
+    print(f"\nСобрано страниц: {len(pages)}")
+    print(f"Файл со страницами сохранен в {output_path}")
+    print("Первые найденные страницы:")
+    for page in pages[:10]:
+        print(f"  {page}")
+    if len(pages) > 10:
+        print(f"  ... еще {len(pages) - 10}")
+    print(
+        "\nЭтот файл можно указать в одиночной проверке, CSV-эксперименте "
+        "или подготовке дипломных примеров."
+    )
+
+
 if __name__ == "__main__":
     print("Выберите режим:")
     print("1. Поиск исключений (бесконечный)")
@@ -1021,7 +1111,8 @@ if __name__ == "__main__":
     print("3. Одиночная проверка")
     print("4. CSV-эксперимент")
     print("5. Подготовка дипломных примеров")
-    mode = input("Введите 1, 2, 3, 4 или 5 [1]: ").strip()
+    print("6. Собрать страницы существующего сайта")
+    mode = input("Введите 1, 2, 3, 4, 5 или 6 [1]: ").strip()
 
     if mode == "3":
         single_mode()
@@ -1029,6 +1120,8 @@ if __name__ == "__main__":
         experiment_mode()
     elif mode == "5":
         diploma_examples_mode()
+    elif mode == "6":
+        crawl_site_mode()
     elif mode == "2":
         try:
             max_iterations = int(input("Введите максимальное число итераций: "))
