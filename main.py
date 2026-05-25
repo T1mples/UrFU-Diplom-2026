@@ -488,15 +488,22 @@ def is_representative_example(result):
     return True
 
 
-def build_examples_summary_lines(examples, missing_families, page_paths_count):
+def build_examples_summary_lines(
+    examples,
+    missing_families,
+    page_paths_count,
+    target_n=None,
+):
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     lines = [
         "Дипломные примеры графов Кэли",
         f"Отчет создан: {now}",
         f"Количество найденных примеров: {len(examples)}",
         f"Страниц для сопоставления: {page_paths_count}",
-        "",
     ]
+    if target_n is not None:
+        lines.append(f"Выбранное n: {target_n}")
+    lines.append("")
 
     if missing_families:
         missing_labels = [
@@ -541,9 +548,17 @@ def generate_diploma_examples(
     page_paths=None,
     output_dir=None,
     show=False,
+    target_n=None,
 ):
     if max_n < 2:
         raise ValueError("max_n должно быть не меньше 2.")
+    if target_n is not None:
+        if target_n < 2:
+            raise ValueError("target_n должно быть не меньше 2.")
+        if target_n % 2 != 0:
+            raise ValueError("target_n должно быть четным.")
+        if target_n > max_n:
+            raise ValueError("target_n не должно быть больше max_n.")
     if max_hamilton_check_n is None:
         max_hamilton_check_n = max_n
     if families is None:
@@ -553,8 +568,15 @@ def generate_diploma_examples(
 
     os.makedirs(output_dir, exist_ok=True)
     selected = {}
+    systems_iterator = iter_generator_systems(max_n, families=families)
+    if target_n is not None:
+        systems_iterator = (
+            (n, system)
+            for n, system in systems_iterator
+            if n == target_n
+        )
 
-    for n, system in iter_generator_systems(max_n, families=families):
+    for n, system in systems_iterator:
         family = system["family"]
         if family in selected:
             continue
@@ -613,6 +635,7 @@ def generate_diploma_examples(
                     examples,
                     missing_families,
                     len(page_paths) if page_paths else 0,
+                    target_n=target_n,
                 )
             )
         )
@@ -976,8 +999,23 @@ def diploma_examples_mode():
     except ValueError:
         raise SystemExit("Максимальное n должно быть целым числом не меньше 2.")
 
+    raw_target_n = input(
+        "Введите конкретное n для примеров [пусто - искать до max_n]: "
+    ).strip()
+    target_n = None
+    if raw_target_n:
+        try:
+            target_n = int(raw_target_n)
+            if target_n < 2 or target_n % 2 != 0 or target_n > max_n:
+                raise ValueError
+        except ValueError:
+            raise SystemExit(
+                "n для примеров должно быть четным целым числом от 2 до max_n."
+            )
+
+    default_hamilton_n = target_n if target_n is not None else max_n
     raw_max_hamilton_n = input(
-        f"Введите максимальное n для поиска гамильтонова цикла [{max_n}]: "
+        f"Введите максимальное n для поиска гамильтонова цикла [{default_hamilton_n}]: "
     ).strip()
     if raw_max_hamilton_n:
         try:
@@ -989,7 +1027,11 @@ def diploma_examples_mode():
                 "Максимальное n для поиска цикла должно быть целым числом не меньше 2."
             )
     else:
-        max_hamilton_n = max_n
+        max_hamilton_n = default_hamilton_n
+    if target_n is not None and max_hamilton_n < target_n:
+        raise SystemExit(
+            "Максимальное n для поиска цикла должно быть не меньше выбранного n."
+        )
 
     families = read_families_selection(default_all=True)
     page_paths = read_optional_page_paths()
@@ -1000,11 +1042,14 @@ def diploma_examples_mode():
         max_hamilton_check_n=max_hamilton_n,
         max_hamilton_time_seconds=max_hamilton_time_seconds,
         page_paths=page_paths,
+        target_n=target_n,
     )
 
     print("\nДипломные примеры подготовлены.")
     print(f"Папка с примерами: {result['output_dir']}")
     print(f"Описание примеров: {result['summary_path']}")
+    if target_n is not None:
+        print(f"Примеры подбирались только для n = {target_n}")
     print(f"Найдено примеров: {len(result['examples'])}")
     if result["missing_families"]:
         missing = ", ".join(
