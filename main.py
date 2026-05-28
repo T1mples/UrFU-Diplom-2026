@@ -654,16 +654,28 @@ def generate_diploma_examples(
 def search_exceptions(max_iterations=None, run_mode="1"):
     filename_prefix = mode_filename_prefix(run_mode)
     print("=== Начинаем поиск исключений ===")
-    try:
-        max_n = int(
-            input("Введите максимальное n для проверки гамильтонова цикла: ")
-        )
-    except ValueError:
-        max_n = 10
+    raw_max_n = input(
+        "Введите максимальное n для проверки гамильтонова цикла "
+        "или оставьте пустым без ограничения: "
+    ).strip()
+    if raw_max_n:
+        try:
+            max_n = int(raw_max_n)
+            if max_n < 2:
+                raise ValueError
+        except ValueError:
+            raise SystemExit(
+                "Максимальное n должно быть целым числом не меньше 2."
+            )
+    else:
+        max_n = None
 
-    print(
-        f"Проверка гамильтонова цикла будет выполняться для n <= {max_n}"
-    )
+    if max_n is None:
+        print("Проверка гамильтонова цикла будет выполняться без ограничения по n.")
+    else:
+        print(
+            f"Проверка гамильтонова цикла будет выполняться для n <= {max_n}"
+        )
     max_hamilton_time_seconds = read_optional_time_limit()
     if max_hamilton_time_seconds is not None:
         print(
@@ -766,10 +778,11 @@ def search_exceptions(max_iterations=None, run_mode="1"):
                         }
                         raise StopIteration
                 else:
-                    print(
-                        f"  Проверка гамильтонова цикла пропущена для n={n} "
-                        f"(n > {max_n})."
-                    )
+                    if max_n is not None:
+                        print(
+                            f"  Проверка гамильтонова цикла пропущена для n={n} "
+                            f"(n > {max_n})."
+                        )
 
             n += 2
     except KeyboardInterrupt:
