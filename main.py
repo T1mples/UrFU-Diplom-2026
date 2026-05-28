@@ -1073,17 +1073,20 @@ def diploma_examples_mode(run_mode="5"):
 
 if __name__ == "__main__":
     print("Выберите режим:")
+    print("0. Выход")
     print("1. Поиск исключений (бесконечный)")
     print("2. Поиск исключений (ограниченное число итераций)")
     print("3. Одиночная проверка")
     print("4. CSV-эксперимент")
     print("5. Подготовка дипломных примеров")
-    mode = input("Введите 1, 2, 3, 4 или 5 [1]: ").strip()
+    mode = input("Введите 0, 1, 2, 3, 4 или 5 [1]: ").strip()
 
     if not mode:
         mode = "1"
 
-    if mode == "3":
+    if mode == "0":
+        print("Программа завершена.")
+    elif mode == "3":
         single_mode(run_mode=mode)
     elif mode == "4":
         experiment_mode(run_mode=mode)
