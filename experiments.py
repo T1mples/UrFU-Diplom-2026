@@ -18,6 +18,7 @@ CSV_FIELDNAMES = [
     "group_size",
     "subgroup_size",
     "generators",
+    "generator_pairs",
     "family_conditions",
     "generator_conditions",
     "three_involution_conditions",
@@ -38,14 +39,14 @@ CSV_FIELDNAMES = [
 ]
 
 
-def default_experiment_filename():
-    return f"gamilthon_experiment_{datetime.datetime.now():%Y%m%d_%H%M%S}.csv"
+def default_experiment_filename(filename_prefix=""):
+    return f"{filename_prefix}gamilthon_experiment_{datetime.datetime.now():%Y%m%d_%H%M%S}.csv"
 
 
 def default_summary_path(csv_path):
     dirname, filename = os.path.split(csv_path)
     stem = os.path.splitext(filename)[0]
-    if stem.startswith("gamilthon_experiment"):
+    if "gamilthon_experiment" in stem:
         stem = stem.replace("gamilthon_experiment", "gamilthon_summary", 1)
     else:
         stem = f"{stem}_summary"
@@ -60,6 +61,10 @@ def reports_path(filename):
 
 def format_generators(generators):
     return ", ".join(element_to_str(generator) for generator in generators)
+
+
+def format_generator_pairs(generators):
+    return ", ".join(f"({k},{f})" for k, f in generators)
 
 
 def format_element_route(cycle):
@@ -133,6 +138,7 @@ def build_experiment_row(iteration, result, elapsed_seconds, page_paths=None):
         "group_size": result["group_size"],
         "subgroup_size": result["subgroup_size"],
         "generators": format_generators(result["generators"]),
+        "generator_pairs": format_generator_pairs(result["generators"]),
         "family_conditions": result["family_conditions"],
         "generator_conditions": result["generator_conditions"],
         "three_involution_conditions": result["three_involution_conditions"],
@@ -165,6 +171,7 @@ def run_csv_experiment(
     output_path=None,
     families=None,
     page_paths=None,
+    filename_prefix="",
 ):
     if max_n < 2:
         raise ValueError("max_n должно быть не меньше 2.")
@@ -175,7 +182,7 @@ def run_csv_experiment(
         families = [THREE_INVOLUTIONS]
 
     if output_path is None:
-        output_path = reports_path(default_experiment_filename())
+        output_path = reports_path(default_experiment_filename(filename_prefix))
 
     dirname = os.path.dirname(output_path)
     if dirname:

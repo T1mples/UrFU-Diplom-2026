@@ -66,7 +66,7 @@ def iter_generator_systems(max_n, families=None):
         families = [THREE_INVOLUTIONS]
 
     family_set = set(families)
-    for n in range(2, max_n + 1, 2):
+    for n in range(2, max_n + 1):
         if THREE_INVOLUTIONS in family_set:
             for system in iter_three_involution_systems(n):
                 yield n, system

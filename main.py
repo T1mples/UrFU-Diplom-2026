@@ -46,12 +46,16 @@ def reports_file_path(filename):
     return os.path.join(reports_dir, filename)
 
 
-def default_graph_image_filename(n, k):
-    return f"gamilthon_graph_D{n}_k{k}_{datetime.datetime.now():%Y%m%d_%H%M%S}.png"
+def mode_filename_prefix(mode):
+    return f"{sanitize_filename_part(mode)})_" if mode else ""
 
 
-def default_examples_dirname():
-    return f"diploma_examples_{datetime.datetime.now():%Y%m%d_%H%M%S}"
+def default_graph_image_filename(n, k, filename_prefix=""):
+    return f"{filename_prefix}gamilthon_graph_D{n}_k{k}_{datetime.datetime.now():%Y%m%d_%H%M%S}.png"
+
+
+def default_examples_dirname(filename_prefix=""):
+    return f"{filename_prefix}diploma_examples_{datetime.datetime.now():%Y%m%d_%H%M%S}"
 
 
 def sanitize_filename_part(value):
@@ -549,14 +553,13 @@ def generate_diploma_examples(
     output_dir=None,
     show=False,
     target_n=None,
+    filename_prefix="",
 ):
     if max_n < 2:
         raise ValueError("max_n должно быть не меньше 2.")
     if target_n is not None:
         if target_n < 2:
             raise ValueError("target_n должно быть не меньше 2.")
-        if target_n % 2 != 0:
-            raise ValueError("target_n должно быть четным.")
         if target_n > max_n:
             raise ValueError("target_n не должно быть больше max_n.")
     if max_hamilton_check_n is None:
@@ -564,7 +567,7 @@ def generate_diploma_examples(
     if families is None:
         families = ALL_FAMILIES
     if output_dir is None:
-        output_dir = reports_file_path(default_examples_dirname())
+        output_dir = reports_file_path(default_examples_dirname(filename_prefix))
 
     os.makedirs(output_dir, exist_ok=True)
     selected = {}
@@ -595,7 +598,7 @@ def generate_diploma_examples(
             continue
 
         filename = (
-            f"{sanitize_filename_part(family)}_"
+            f"{filename_prefix}{sanitize_filename_part(family)}_"
             f"D{n}_{sanitize_filename_part(system['parameters'])}.png"
         )
         image_path = os.path.join(output_dir, filename)
@@ -627,7 +630,7 @@ def generate_diploma_examples(
 
     examples = [selected[family] for family in families if family in selected]
     missing_families = [family for family in families if family not in selected]
-    summary_path = os.path.join(output_dir, "examples_summary.txt")
+    summary_path = os.path.join(output_dir, f"{filename_prefix}examples_summary.txt")
     with open(summary_path, "w", encoding="utf-8") as summary_file:
         summary_file.write(
             "\n".join(
@@ -648,7 +651,8 @@ def generate_diploma_examples(
     }
 
 
-def search_exceptions(max_iterations=None):
+def search_exceptions(max_iterations=None, run_mode="1"):
+    filename_prefix = mode_filename_prefix(run_mode)
     print("=== Начинаем поиск исключений ===")
     try:
         max_n = int(
@@ -770,7 +774,7 @@ def search_exceptions(max_iterations=None):
             n += 2
     except KeyboardInterrupt:
         print("\nПользователь остановил поиск.")
-        report_name = f"gamilthon_report_{datetime.datetime.now():%Y%m%d_%H%M%S}.txt"
+        report_name = f"{filename_prefix}gamilthon_report_{datetime.datetime.now():%Y%m%d_%H%M%S}.txt"
         write_report(
             report_name,
             iterations,
@@ -793,7 +797,7 @@ def search_exceptions(max_iterations=None):
             print("\nНайден контрпример к гипотезе о гамильтоновости графов Кэли.")
         else:
             print("\nДостигнуто заданное ограничение по числу итераций.")
-        report_name = f"gamilthon_report_{datetime.datetime.now():%Y%m%d_%H%M%S}.txt"
+        report_name = f"{filename_prefix}gamilthon_report_{datetime.datetime.now():%Y%m%d_%H%M%S}.txt"
         write_report(
             report_name,
             iterations,
@@ -813,7 +817,8 @@ def search_exceptions(max_iterations=None):
         return
 
 
-def single_mode():
+def single_mode(run_mode="3"):
+    filename_prefix = mode_filename_prefix(run_mode)
     print("=== Диэдральный граф Кэли с тремя инволюциями ===")
     n = int(
         input(
@@ -903,12 +908,13 @@ def single_mode():
     else:
         print("\nГамильтонов цикл не найден")
 
-    image_path = reports_file_path(default_graph_image_filename(n, k))
+    image_path = reports_file_path(default_graph_image_filename(n, k, filename_prefix))
     draw_graph(graph, generators, cycle=cycle, output_path=image_path)
     print(f"\nИзображение графа сохранено в {image_path}")
 
 
-def experiment_mode():
+def experiment_mode(run_mode="4"):
+    filename_prefix = mode_filename_prefix(run_mode)
     print("=== CSV-эксперимент по графам Кэли диэдральных групп ===")
     try:
         max_n = int(input("Введите максимальное n для перебора: "))
@@ -959,6 +965,7 @@ def experiment_mode():
         max_iterations=max_iterations,
         families=families,
         page_paths=page_paths,
+        filename_prefix=filename_prefix,
     )
     summary_path = write_experiment_summary(summary)
 
@@ -990,7 +997,8 @@ def experiment_mode():
     print(f"Общее время: {format_duration(summary['total_elapsed_seconds'])}")
 
 
-def diploma_examples_mode():
+def diploma_examples_mode(run_mode="5"):
+    filename_prefix = mode_filename_prefix(run_mode)
     print("=== Подготовка дипломных примеров ===")
     try:
         max_n = int(input("Введите максимальное n для поиска примеров: "))
@@ -1006,11 +1014,11 @@ def diploma_examples_mode():
     if raw_target_n:
         try:
             target_n = int(raw_target_n)
-            if target_n < 2 or target_n % 2 != 0 or target_n > max_n:
+            if target_n < 2 or target_n > max_n:
                 raise ValueError
         except ValueError:
             raise SystemExit(
-                "n для примеров должно быть четным целым числом от 2 до max_n."
+                "n для примеров должно быть целым числом от 2 до max_n."
             )
 
     default_hamilton_n = target_n if target_n is not None else max_n
@@ -1043,6 +1051,7 @@ def diploma_examples_mode():
         max_hamilton_time_seconds=max_hamilton_time_seconds,
         page_paths=page_paths,
         target_n=target_n,
+        filename_prefix=filename_prefix,
     )
 
     print("\nДипломные примеры подготовлены.")
@@ -1068,12 +1077,15 @@ if __name__ == "__main__":
     print("5. Подготовка дипломных примеров")
     mode = input("Введите 1, 2, 3, 4 или 5 [1]: ").strip()
 
+    if not mode:
+        mode = "1"
+
     if mode == "3":
-        single_mode()
+        single_mode(run_mode=mode)
     elif mode == "4":
-        experiment_mode()
+        experiment_mode(run_mode=mode)
     elif mode == "5":
-        diploma_examples_mode()
+        diploma_examples_mode(run_mode=mode)
     elif mode == "2":
         try:
             max_iterations = int(input("Введите максимальное число итераций: "))
@@ -1083,6 +1095,6 @@ if __name__ == "__main__":
             raise SystemExit(
                 "Число итераций должно быть положительным целым числом."
             )
-        search_exceptions(max_iterations=max_iterations)
+        search_exceptions(max_iterations=max_iterations, run_mode=mode)
     else:
-        search_exceptions()
+        search_exceptions(run_mode=mode)
