@@ -309,7 +309,6 @@ def write_report(
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     lines = [
         f"Отчет создан: {now}",
-        "Модель: веб-граф как граф Кэли диэдральной группы.",
         f"Итераций выполнено: {iterations}",
         f"Общее время вычислений: {format_duration(total_elapsed_seconds)}",
         f"Пропущено систем вне условий теоремы: {skipped_invalid_conditions}",
@@ -334,15 +333,6 @@ def write_report(
             lines.append("Остановлено пользователем.")
         else:
             lines.append("Остановлено без исключения.")
-
-    if last_checked:
-        lines.append(f"Последняя проверка: n = {last_checked['n']}, k = {last_checked['k']}")
-
-    if last_hamiltonian and last_hamiltonian.get("cycle"):
-        lines.append("Последний найденный гамильтонов цикл:")
-        lines.append(format_element_route(last_hamiltonian["cycle"]))
-        lines.append("Веб-маршрут последнего найденного цикла:")
-        lines.append(format_web_route(last_hamiltonian["cycle"]))
 
     if max_hamilton_check_n is not None:
         lines.append(
