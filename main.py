@@ -54,6 +54,14 @@ def default_graph_image_filename(n, k, filename_prefix=""):
     return f"{filename_prefix}gamilthon_graph_D{n}_k{k}_{datetime.datetime.now():%Y%m%d_%H%M%S}.png"
 
 
+def default_single_graph_image_filename(family, n, parameters, filename_prefix=""):
+    return (
+        f"{filename_prefix}gamilthon_graph_{sanitize_filename_part(family)}_"
+        f"D{n}_{sanitize_filename_part(parameters)}_"
+        f"{datetime.datetime.now():%Y%m%d_%H%M%S}.png"
+    )
+
+
 def default_examples_dirname(filename_prefix=""):
     return f"{filename_prefix}diploma_examples_{datetime.datetime.now():%Y%m%d_%H%M%S}"
 
@@ -92,6 +100,22 @@ def read_families_selection(default_all=False):
     if family_mode == "4":
         return ALL_FAMILIES
     return [THREE_INVOLUTIONS]
+
+
+def read_single_family_selection():
+    print("\nВыберите семейство системы порождающих:")
+    print("1. Три инволюции с коммутирующей парой")
+    print("2. Поворот, обратный поворот и отражение")
+    print("3. Две отражающие симметрии")
+    family_mode = input("Введите 1, 2 или 3 [1]: ").strip()
+    if not family_mode:
+        family_mode = "1"
+
+    if family_mode == "2":
+        return ROTATION_REFLECTION
+    if family_mode == "3":
+        return TWO_REFLECTIONS
+    return THREE_INVOLUTIONS
 
 
 def read_optional_page_paths():
@@ -822,7 +846,7 @@ def search_exceptions(max_iterations=None, run_mode="1"):
 
 def single_mode(run_mode="3"):
     filename_prefix = mode_filename_prefix(run_mode)
-    print("=== Диэдральный граф Кэли с тремя инволюциями ===")
+    print("=== Одиночная проверка графа Кэли диэдральной группы ===")
     n = int(
         input(
             "Введите параметр n для диэдральной группы D_n: "
@@ -830,48 +854,101 @@ def single_mode(run_mode="3"):
     )
     if n < 2:
         raise SystemExit("n должно быть целым числом не меньше 2.")
-    if n % 2 != 0:
-        print(
-            "\nСемейство трех инволюций с двумя коммутирующими пропущено "
-            f"для D_{n}, поскольку n является нечетным."
-        )
-        print(
-            "Для этого семейства требуется элемент (n/2,1), который существует "
-            "только при четном n."
-        )
-        return
 
-    k = int(
-        input(
-            f"Введите параметр k — смещение третьей инволюции (целое число от 1 до {n - 1}): "
+    family = read_single_family_selection()
+    if family == THREE_INVOLUTIONS:
+        if n % 2 != 0:
+            print(
+                "\nСемейство трех инволюций с двумя коммутирующими пропущено "
+                f"для D_{n}, поскольку n является нечетным."
+            )
+            print(
+                "Для этого семейства требуется элемент (n/2,1), который существует "
+                "только при четном n."
+            )
+            return
+
+        k = int(
+            input(
+                f"Введите параметр k — смещение третьей инволюции (целое число от 1 до {n - 1}): "
+            )
         )
-    )
-    if not 1 <= k <= n - 1:
-        raise SystemExit(f"k должно быть целым числом от 1 до {n - 1}.")
+        if not 1 <= k <= n - 1:
+            raise SystemExit(f"k должно быть целым числом от 1 до {n - 1}.")
+        generators = build_dihedral_involution_generators(n, k)
+        parameters = f"k={k}"
+        require_three_involution_conditions = True
+    elif family == ROTATION_REFLECTION:
+        a = int(
+            input(
+                f"Введите параметр a — смещение поворота (целое число от 1 до {n - 1}): "
+            )
+        )
+        if not 1 <= a <= n - 1:
+            raise SystemExit(f"a должно быть целым числом от 1 до {n - 1}.")
+        b = int(
+            input(
+                f"Введите параметр b — смещение отражения (целое число от 0 до {n - 1}): "
+            )
+        )
+        if not 0 <= b <= n - 1:
+            raise SystemExit(f"b должно быть целым числом от 0 до {n - 1}.")
+        generators = [(a, 0), ((-a) % n, 0), (b, 1)]
+        parameters = f"a={a}, b={b}"
+        k = ""
+        require_three_involution_conditions = False
+    else:
+        a = int(
+            input(
+                f"Введите параметр a — первое отражение (целое число от 0 до {n - 1}): "
+            )
+        )
+        b = int(
+            input(
+                f"Введите параметр b — второе отражение (целое число от 0 до {n - 1}, b>a): "
+            )
+        )
+        if not 0 <= a < b < n:
+            raise SystemExit(f"Параметры должны удовлетворять условию 0 <= a < b < {n}.")
+        generators = [(a, 1), (b, 1)]
+        parameters = f"a={a}, b={b}"
+        k = ""
+        require_three_involution_conditions = False
 
     max_hamilton_time_seconds = read_optional_time_limit()
-    params = check_parameters(
+    params = check_generator_system(
         n,
-        k,
+        generators,
+        family=family,
+        parameters=parameters,
+        k=k,
         max_hamilton_time_seconds=max_hamilton_time_seconds,
+        require_three_involution_conditions=require_three_involution_conditions,
     )
     generators = params["generators"]
 
-    print("\nГенераторы (инволюции):")
+    print(f"\nСемейство: {FAMILY_LABELS.get(family, family)}")
+    print(f"Параметры: {parameters}")
+    print("\nГенераторы:")
     for index, generator in enumerate(generators, start=1):
         print(
             f"  g{index} = {element_to_str(generator)}  "
             f"(инволюция: {is_involution(generator, n)})"
         )
 
-    print("\nУсловия теоремы о трех инволюциях:")
-    print(f"  Все генераторы являются инволюциями: {all(params['involutions'])}")
-    print(f"  Генераторы попарно различны: {params['distinct_generators']}")
-    print(f"  g1 и g2 коммутируют: {params['commuting_pair']}")
-    print(f"  Базовые условия на генераторы выполнены: {params['generator_conditions']}")
-    print(f"  Полные условия теоремы с учетом порождения: {params['theorem_conditions']}")
-    if params["details"]:
-        print(f"  Детали: {params['details']}")
+    if family == THREE_INVOLUTIONS:
+        print("\nУсловия теоремы о трех инволюциях:")
+        print(f"  Все генераторы являются инволюциями: {all(params['involutions'])}")
+        print(f"  Генераторы попарно различны: {params['distinct_generators']}")
+        print(f"  g1 и g2 коммутируют: {params['commuting_pair']}")
+        print(f"  Базовые условия на генераторы выполнены: {params['generator_conditions']}")
+        print(f"  Полные условия теоремы с учетом порождения: {params['theorem_conditions']}")
+        if params["details"]:
+            print(f"  Детали: {params['details']}")
+    else:
+        print("\nЭто семейство не относится к случаю трех инволюций с коммутирующей парой.")
+        if params["details"]:
+            print(f"  Детали: {params['details']}")
 
     non_commuting_pairs = find_non_commuting_pairs(generators, n)
     print(f"  Информационно: все пары генераторов коммутируют: {not non_commuting_pairs}")
@@ -919,7 +996,9 @@ def single_mode(run_mode="3"):
     else:
         print("\nГамильтонов цикл не найден")
 
-    image_path = reports_file_path(default_graph_image_filename(n, k, filename_prefix))
+    image_path = reports_file_path(
+        default_single_graph_image_filename(family, n, parameters, filename_prefix)
+    )
     draw_graph(graph, generators, cycle=cycle, output_path=image_path)
     print(f"\nИзображение графа сохранено в {image_path}")
 
