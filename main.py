@@ -62,6 +62,14 @@ def default_single_graph_image_filename(family, n, parameters, filename_prefix="
     )
 
 
+def default_specific_graph_report_filename(family, n, parameters, filename_prefix=""):
+    return (
+        f"{filename_prefix}specific_graph_report_{sanitize_filename_part(family)}_"
+        f"D{n}_{sanitize_filename_part(parameters)}_"
+        f"{datetime.datetime.now():%Y%m%d_%H%M%S}.txt"
+    )
+
+
 def default_examples_dirname(filename_prefix=""):
     return f"{filename_prefix}diploma_examples_{datetime.datetime.now():%Y%m%d_%H%M%S}"
 
@@ -80,6 +88,14 @@ def sanitize_filename_part(value):
 
 def format_generators(generators):
     return ", ".join(element_to_str(generator) for generator in generators)
+
+
+def format_generator_pairs(generators):
+    return "{" + ", ".join(f"({k},{f})" for k, f in generators) + "}"
+
+
+def format_yes_no(value):
+    return "да" if value else "нет"
 
 
 def read_families_selection(default_all=False):
@@ -195,6 +211,37 @@ def find_non_commuting_pairs(generators, n):
             if not commutes(generators[i], generators[j], n):
                 non_commuting_pairs.append((i, j))
     return non_commuting_pairs
+
+
+def format_non_commuting_pairs(generators, n):
+    non_commuting_pairs = find_non_commuting_pairs(generators, n)
+    if not non_commuting_pairs:
+        return "нет"
+    return ", ".join(f"g{i + 1}-g{j + 1}" for i, j in non_commuting_pairs)
+
+
+def format_adjacency_list(graph):
+    lines = []
+    for vertex, neighbors in graph.items():
+        neighbor_labels = ", ".join(element_to_str(neighbor) for neighbor in neighbors)
+        lines.append(f"{element_to_str(vertex)}: [{neighbor_labels}]")
+    return lines
+
+
+def build_adjacency_matrix(vertices, graph):
+    rows = []
+    for vertex in vertices:
+        neighbors = set(graph.get(vertex, []))
+        rows.append([1 if candidate in neighbors else 0 for candidate in vertices])
+    return rows
+
+
+def format_adjacency_matrix(vertices, graph):
+    matrix = build_adjacency_matrix(vertices, graph)
+    if not matrix:
+        return "[]"
+    row_lines = [str(row) for row in matrix]
+    return "[\n  " + ",\n  ".join(row_lines) + "\n]"
 
 
 def draw_graph(graph, generators, cycle=None, output_path=None, show=True):
@@ -381,6 +428,101 @@ def write_report(
         report.write("\n".join(lines))
 
     print(f"Отчет сохранен в {filename_full}")
+
+
+def write_specific_graph_report(
+    filename,
+    result,
+    graph,
+    image_path,
+    page_route="",
+):
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    n = result["n"]
+    group = build_dihedral_group(n)
+    generators = result["generators"]
+    cycle = result["cycle"]
+    family = result["family"]
+    family_label = FAMILY_LABELS.get(family, family)
+    generator_labels = [element_to_str(generator) for generator in generators]
+
+    lines = [
+        "Отчет по конкретному графу Кэли",
+        f"Отчет создан: {now}",
+        "",
+        "Исходные данные",
+        f"Семейство системы порождающих: {family_label}",
+        f"Группа: D_{n}",
+        f"Порядок группы: {result['group_size']}",
+        f"Граф Кэли: Cay(D_{n}, S)",
+        f"Параметры: {result['parameters']}",
+        f"Порождающие в виде пар (k,f): S = {format_generator_pairs(generators)}",
+        f"Порождающие в обозначениях группы: S = {{{', '.join(generator_labels)}}}",
+        "",
+        "Свойства системы порождающих",
+        f"Количество генераторов: {result['generator_count']}",
+        f"Генераторы попарно различны: {format_yes_no(result['distinct_generators'])}",
+        f"Система содержит нейтральный элемент: {format_yes_no(result['contains_identity'])}",
+        f"Все генераторы являются инволюциями: {format_yes_no(all(result['involutions']))}",
+        f"Первые два генератора коммутируют: {format_yes_no(result['commuting_pair'])}",
+        f"Некоммутирующие пары генераторов: {format_non_commuting_pairs(generators, n)}",
+        f"Размер порожденной подгруппы: {result['subgroup_size']}",
+        f"Система порождает всю группу D_{n}: {format_yes_no(result['generates'])}",
+        f"Условия теоремы о трех инволюциях выполнены: {format_yes_no(result['theorem_conditions'])}",
+        "",
+        "Результат поиска гамильтонова цикла",
+        f"Поиск выполнялся: {format_yes_no(result['cycle_checked'])}",
+        f"Статус поиска: {format_cycle_status(result['cycle_status'])}",
+        f"Просмотрено состояний поиска: {result['cycle_states_checked']}",
+        f"Время поиска: {result['cycle_elapsed_seconds']:.6f} с",
+    ]
+
+    if result["max_hamilton_time_seconds"] is not None:
+        lines.append(
+            f"Лимит времени: {result['max_hamilton_time_seconds']:.3f} с"
+        )
+
+    if cycle:
+        lines.extend(
+            [
+                f"Найденный гамильтонов цикл: {format_element_route(cycle)}",
+                f"Модельный веб-маршрут: {format_web_route(cycle)}",
+            ]
+        )
+        if page_route:
+            lines.append(f"Маршрут по пользовательским страницам: {page_route}")
+    else:
+        lines.append("Найденный гамильтонов цикл: отсутствует")
+
+    if result["details"]:
+        lines.append(f"Детали проверки: {result['details']}")
+
+    lines.extend(
+        [
+            "",
+            "Файлы результата",
+            f"Изображение графа: {image_path}",
+            "",
+            "Вершины графа в порядке строк и столбцов матрицы",
+            "[" + ", ".join(element_to_str(vertex) for vertex in group) + "]",
+            "",
+            "Список смежности",
+            *format_adjacency_list(graph),
+            "",
+            "Матрица смежности",
+            format_adjacency_matrix(group, graph),
+        ]
+    )
+
+    filename_full = filename if os.path.isabs(filename) else reports_file_path(filename)
+    dirname = os.path.dirname(filename_full)
+    if dirname:
+        os.makedirs(dirname, exist_ok=True)
+
+    with open(filename_full, "w", encoding="utf-8") as report:
+        report.write("\n".join(lines))
+
+    return filename_full
 
 
 def check_generator_system(
@@ -1003,6 +1145,136 @@ def single_mode(run_mode="3"):
     print(f"\nИзображение графа сохранено в {image_path}")
 
 
+def specific_graph_mode(run_mode="6"):
+    filename_prefix = mode_filename_prefix(run_mode)
+    print("=== Построение конкретного графа Кэли по выбранным параметрам ===")
+    n = int(
+        input(
+            "Введите параметр n для диэдральной группы D_n: "
+        )
+    )
+    if n < 2:
+        raise SystemExit("n должно быть целым числом не меньше 2.")
+
+    family = read_single_family_selection()
+    if family == THREE_INVOLUTIONS:
+        if n % 2 != 0:
+            print(
+                "\nСемейство трех инволюций с двумя коммутирующими пропущено "
+                f"для D_{n}, поскольку n является нечетным."
+            )
+            print(
+                "Для этого семейства требуется элемент (n/2,1), который существует "
+                "только при четном n."
+            )
+            return
+
+        k = int(
+            input(
+                f"Введите параметр k для третьей инволюции (целое число от 1 до {n - 1}): "
+            )
+        )
+        if not 1 <= k <= n - 1:
+            raise SystemExit(f"k должно быть целым числом от 1 до {n - 1}.")
+        generators = build_dihedral_involution_generators(n, k)
+        parameters = f"k={k}"
+        require_three_involution_conditions = True
+    elif family == ROTATION_REFLECTION:
+        a = int(
+            input(
+                f"Введите параметр a для поворота (целое число от 1 до {n - 1}): "
+            )
+        )
+        if not 1 <= a <= n - 1:
+            raise SystemExit(f"a должно быть целым числом от 1 до {n - 1}.")
+        b = int(
+            input(
+                f"Введите параметр b для отражения (целое число от 0 до {n - 1}): "
+            )
+        )
+        if not 0 <= b <= n - 1:
+            raise SystemExit(f"b должно быть целым числом от 0 до {n - 1}.")
+        generators = [(a, 0), ((-a) % n, 0), (b, 1)]
+        parameters = f"a={a}, b={b}"
+        k = ""
+        require_three_involution_conditions = False
+    else:
+        a = int(
+            input(
+                f"Введите параметр a для первого отражения (целое число от 0 до {n - 1}): "
+            )
+        )
+        b = int(
+            input(
+                f"Введите параметр b для второго отражения (целое число от 0 до {n - 1}, b>a): "
+            )
+        )
+        if not 0 <= a < b < n:
+            raise SystemExit(f"Параметры должны удовлетворять условию 0 <= a < b < {n}.")
+        generators = [(a, 1), (b, 1)]
+        parameters = f"a={a}, b={b}"
+        k = ""
+        require_three_involution_conditions = False
+
+    max_hamilton_time_seconds = read_optional_time_limit()
+    page_paths = read_optional_page_paths()
+
+    result = check_generator_system(
+        n,
+        generators,
+        family=family,
+        parameters=parameters,
+        k=k,
+        max_hamilton_time_seconds=max_hamilton_time_seconds,
+        require_three_involution_conditions=require_three_involution_conditions,
+    )
+    group = build_dihedral_group(n)
+    graph = build_cayley_graph(group, generators, n)
+
+    page_route = ""
+    if page_paths and result["cycle"]:
+        try:
+            vertex_page_map = build_vertex_page_map(group, page_paths)
+        except ValueError as error:
+            raise SystemExit(str(error))
+        page_route = format_page_route(result["cycle"], vertex_page_map)
+
+    image_path = reports_file_path(
+        default_single_graph_image_filename(
+            family,
+            n,
+            parameters,
+            filename_prefix,
+        )
+    )
+    draw_graph(graph, generators, cycle=result["cycle"], output_path=image_path)
+
+    report_path = write_specific_graph_report(
+        default_specific_graph_report_filename(
+            family,
+            n,
+            parameters,
+            filename_prefix,
+        ),
+        result,
+        graph,
+        image_path,
+        page_route=page_route,
+    )
+
+    print("\nКонкретный граф построен.")
+    print(f"Семейство: {FAMILY_LABELS.get(family, family)}")
+    print(f"Группа: D_{n}, порядок группы: {result['group_size']}")
+    print(f"Порождающие в виде пар (k,f): {format_generator_pairs(generators)}")
+    print(f"Порождающие в обозначениях: {{{format_generators(generators)}}}")
+    print(f"Система порождает всю группу: {format_yes_no(result['generates'])}")
+    print(f"Статус поиска цикла: {format_cycle_status(result['cycle_status'])}")
+    if result["cycle"]:
+        print(f"Найденный цикл: {format_element_route(result['cycle'])}")
+    print(f"Отчет сохранен в {report_path}")
+    print(f"Изображение графа сохранено в {image_path}")
+
+
 def experiment_mode(run_mode="4"):
     filename_prefix = mode_filename_prefix(run_mode)
     print("=== CSV-эксперимент по графам Кэли диэдральных групп ===")
@@ -1166,7 +1438,8 @@ if __name__ == "__main__":
     print("3. Одиночная проверка")
     print("4. CSV-эксперимент")
     print("5. Подготовка дипломных примеров")
-    mode = input("Введите 0, 1, 2, 3, 4 или 5 [1]: ").strip()
+    print("6. Построение конкретного графа")
+    mode = input("Введите 0, 1, 2, 3, 4, 5 или 6 [1]: ").strip()
 
     if not mode:
         mode = "1"
@@ -1179,6 +1452,8 @@ if __name__ == "__main__":
         experiment_mode(run_mode=mode)
     elif mode == "5":
         diploma_examples_mode(run_mode=mode)
+    elif mode == "6":
+        specific_graph_mode(run_mode=mode)
     elif mode == "2":
         try:
             max_iterations = int(input("Введите максимальное число итераций: "))
