@@ -261,6 +261,12 @@ def format_non_commuting_pairs(generators, n):
     return ", ".join(f"g{i + 1}-g{j + 1}" for i, j in non_commuting_pairs)
 
 
+def format_first_pair_commuting(result):
+    if result["generator_count"] < 2:
+        return "не применимо"
+    return format_yes_no(result["commuting_pair"])
+
+
 def format_adjacency_list(graph):
     lines = []
     for vertex, neighbors in graph.items():
@@ -296,13 +302,13 @@ def draw_graph(graph, generators, cycle=None, output_path=None, show=True):
         for index, neighbor in enumerate(neighbors):
             graph_view.add_edge(node, neighbor)
             if index < len(edge_groups):
-                edge_groups[index].add(frozenset((node, neighbor)))
+                edge_groups[index].add((node, neighbor))
 
     cycle_edges = set()
     if cycle:
         closed_cycle = cycle + [cycle[0]]
         cycle_edges = {
-            frozenset((closed_cycle[index], closed_cycle[index + 1]))
+            (closed_cycle[index], closed_cycle[index + 1])
             for index in range(len(cycle))
         }
 
@@ -503,17 +509,39 @@ def write_specific_graph_report(
         f"Генераторы попарно различны: {format_yes_no(result['distinct_generators'])}",
         f"Система содержит нейтральный элемент: {format_yes_no(result['contains_identity'])}",
         f"Все генераторы являются инволюциями: {format_yes_no(all(result['involutions']))}",
-        f"Первые два генератора коммутируют: {format_yes_no(result['commuting_pair'])}",
+        f"Первые два генератора коммутируют: {format_first_pair_commuting(result)}",
         f"Некоммутирующие пары генераторов: {format_non_commuting_pairs(generators, n)}",
         f"Размер порожденной подгруппы: {result['subgroup_size']}",
         f"Система порождает всю группу D_{n}: {format_yes_no(result['generates'])}",
         f"Условия теоремы о трех инволюциях выполнены: {format_yes_no(result['theorem_conditions'])}",
         "",
-        "Построение графа",
+        "Построение графа и поиск гамильтонова цикла",
         f"Количество вершин: {len(group)}",
         f"Количество переходов в списке смежности: {len(group) * len(generators)}",
-        "Поиск гамильтонова цикла в этом режиме не выполнялся.",
+        f"Поиск выполнялся: {format_yes_no(result['cycle_checked'])}",
+        f"Статус поиска: {format_cycle_status(result['cycle_status'])}",
+        f"Просмотрено состояний поиска: {result['cycle_states_checked']}",
+        f"Время поиска: {result['cycle_elapsed_seconds']:.6f} с",
     ]
+
+    if result["max_hamilton_time_seconds"] is not None:
+        lines.append(
+            f"Лимит времени: {result['max_hamilton_time_seconds']:.3f} с"
+        )
+
+    if result["cycle"]:
+        lines.extend(
+            [
+                f"Найденный гамильтонов цикл: {format_element_route(result['cycle'])}",
+                f"Модельный веб-маршрут: {format_web_route(result['cycle'])}",
+            ]
+        )
+    elif result["cycle_status"] == "not_found":
+        lines.append("Найденный гамильтонов цикл: не найден.")
+    elif result["cycle_status"] == "timeout":
+        lines.append("Найденный гамильтонов цикл: поиск остановлен по лимиту времени.")
+    else:
+        lines.append("Найденный гамильтонов цикл: отсутствует.")
 
     if result["details"]:
         lines.append(f"Детали проверки: {result['details']}")
@@ -555,6 +583,7 @@ def check_generator_system(
     max_hamilton_check_n=None,
     max_hamilton_time_seconds=None,
     require_three_involution_conditions=False,
+    search_even_if_not_generating=False,
 ):
     group_size = 2 * n
     involutions = [is_involution(generator, n) for generator in generators]
@@ -579,7 +608,7 @@ def check_generator_system(
     hamiltonian = False
     cycle = None
     cycle_allowed_by_limit = max_hamilton_check_n is None or n <= max_hamilton_check_n
-    cycle_checked = cycle_allowed_by_limit and generates
+    cycle_checked = cycle_allowed_by_limit and (generates or search_even_if_not_generating)
     cycle_status = "skipped"
     cycle_states_checked = 0
     cycle_elapsed_seconds = 0.0
@@ -599,7 +628,7 @@ def check_generator_system(
     if not generates:
         details.append(f"Генераторы порождают подгруппу размера {subgroup_size}, а не D_{n}.")
 
-    if cycle_checked and generates:
+    if cycle_checked:
         graph = build_cayley_graph(build_dihedral_group(n), generators, n)
         cycle_result = find_hamiltonian_cycle_with_stats(
             graph,
@@ -1180,6 +1209,7 @@ def specific_graph_mode(run_mode="6"):
     generators = read_custom_generators(n)
     family = "custom_generators"
     parameters = f"S={format_generator_pairs(generators)}"
+    max_hamilton_time_seconds = read_optional_time_limit()
 
     result = check_generator_system(
         n,
@@ -1187,8 +1217,9 @@ def specific_graph_mode(run_mode="6"):
         family=family,
         parameters=parameters,
         k="",
-        max_hamilton_check_n=0,
+        max_hamilton_time_seconds=max_hamilton_time_seconds,
         require_three_involution_conditions=False,
+        search_even_if_not_generating=True,
     )
     group = build_dihedral_group(n)
     graph = build_cayley_graph(group, generators, n)
@@ -1201,7 +1232,7 @@ def specific_graph_mode(run_mode="6"):
             filename_prefix,
         )
     )
-    draw_graph(graph, generators, cycle=None, output_path=image_path)
+    draw_graph(graph, generators, cycle=result["cycle"], output_path=image_path)
 
     report_path = write_specific_graph_report(
         default_specific_graph_report_filename(
@@ -1220,7 +1251,11 @@ def specific_graph_mode(run_mode="6"):
     print(f"Порождающие в виде пар (k,f): {format_generator_pairs(generators)}")
     print(f"Порождающие в обозначениях: {{{format_generators(generators)}}}")
     print(f"Система порождает всю группу: {format_yes_no(result['generates'])}")
-    print("Поиск гамильтонова цикла не выполнялся.")
+    print(f"Статус поиска цикла: {format_cycle_status(result['cycle_status'])}")
+    if result["cycle"]:
+        print(f"Найденный цикл: {format_element_route(result['cycle'])}")
+    else:
+        print("Гамильтонов цикл не найден или не был получен.")
     print(f"Отчет сохранен в {report_path}")
     print(f"Изображение графа сохранено в {image_path}")
 
