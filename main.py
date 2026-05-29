@@ -134,6 +134,47 @@ def read_single_family_selection():
     return THREE_INVOLUTIONS
 
 
+def read_custom_generators(n):
+    try:
+        generator_count = int(input("Введите количество элементов в S: ").strip())
+    except ValueError:
+        raise SystemExit("Количество элементов в S должно быть положительным целым числом.")
+
+    if generator_count <= 0:
+        raise SystemExit("Количество элементов в S должно быть положительным целым числом.")
+
+    generators = []
+    for index in range(1, generator_count + 1):
+        raw_value = input(
+            f"Введите g{index} в виде пары k,f, например 0,1 или (0,1): "
+        ).strip()
+        normalized = (
+            raw_value
+            .replace("(", "")
+            .replace(")", "")
+            .replace(" ", "")
+        )
+        parts = normalized.split(",")
+        if len(parts) != 2:
+            raise SystemExit(
+                "Каждый элемент S должен быть задан парой k,f, например 0,1."
+            )
+
+        try:
+            k, f = (int(parts[0]), int(parts[1]))
+        except ValueError:
+            raise SystemExit("Значения k и f должны быть целыми числами.")
+
+        if not 0 <= k < n:
+            raise SystemExit(f"Значение k должно быть целым числом от 0 до {n - 1}.")
+        if f not in (0, 1):
+            raise SystemExit("Значение f должно быть равно 0 или 1.")
+
+        generators.append((k, f))
+
+    return generators
+
+
 def read_optional_page_paths():
     try:
         filename = input(
@@ -435,15 +476,13 @@ def write_specific_graph_report(
     result,
     graph,
     image_path,
-    page_route="",
 ):
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     n = result["n"]
     group = build_dihedral_group(n)
     generators = result["generators"]
-    cycle = result["cycle"]
     family = result["family"]
-    family_label = FAMILY_LABELS.get(family, family)
+    family_label = FAMILY_LABELS.get(family, "пользовательское множество S")
     generator_labels = [element_to_str(generator) for generator in generators]
 
     lines = [
@@ -470,29 +509,11 @@ def write_specific_graph_report(
         f"Система порождает всю группу D_{n}: {format_yes_no(result['generates'])}",
         f"Условия теоремы о трех инволюциях выполнены: {format_yes_no(result['theorem_conditions'])}",
         "",
-        "Результат поиска гамильтонова цикла",
-        f"Поиск выполнялся: {format_yes_no(result['cycle_checked'])}",
-        f"Статус поиска: {format_cycle_status(result['cycle_status'])}",
-        f"Просмотрено состояний поиска: {result['cycle_states_checked']}",
-        f"Время поиска: {result['cycle_elapsed_seconds']:.6f} с",
+        "Построение графа",
+        f"Количество вершин: {len(group)}",
+        f"Количество переходов в списке смежности: {len(group) * len(generators)}",
+        "Поиск гамильтонова цикла в этом режиме не выполнялся.",
     ]
-
-    if result["max_hamilton_time_seconds"] is not None:
-        lines.append(
-            f"Лимит времени: {result['max_hamilton_time_seconds']:.3f} с"
-        )
-
-    if cycle:
-        lines.extend(
-            [
-                f"Найденный гамильтонов цикл: {format_element_route(cycle)}",
-                f"Модельный веб-маршрут: {format_web_route(cycle)}",
-            ]
-        )
-        if page_route:
-            lines.append(f"Маршрут по пользовательским страницам: {page_route}")
-    else:
-        lines.append("Найденный гамильтонов цикл: отсутствует")
 
     if result["details"]:
         lines.append(f"Детали проверки: {result['details']}")
@@ -1147,7 +1168,7 @@ def single_mode(run_mode="3"):
 
 def specific_graph_mode(run_mode="6"):
     filename_prefix = mode_filename_prefix(run_mode)
-    print("=== Построение конкретного графа Кэли по выбранным параметрам ===")
+    print("=== Построение конкретного графа Кэли по заданному множеству S ===")
     n = int(
         input(
             "Введите параметр n для диэдральной группы D_n: "
@@ -1156,88 +1177,21 @@ def specific_graph_mode(run_mode="6"):
     if n < 2:
         raise SystemExit("n должно быть целым числом не меньше 2.")
 
-    family = read_single_family_selection()
-    if family == THREE_INVOLUTIONS:
-        if n % 2 != 0:
-            print(
-                "\nСемейство трех инволюций с двумя коммутирующими пропущено "
-                f"для D_{n}, поскольку n является нечетным."
-            )
-            print(
-                "Для этого семейства требуется элемент (n/2,1), который существует "
-                "только при четном n."
-            )
-            return
-
-        k = int(
-            input(
-                f"Введите параметр k для третьей инволюции (целое число от 1 до {n - 1}): "
-            )
-        )
-        if not 1 <= k <= n - 1:
-            raise SystemExit(f"k должно быть целым числом от 1 до {n - 1}.")
-        generators = build_dihedral_involution_generators(n, k)
-        parameters = f"k={k}"
-        require_three_involution_conditions = True
-    elif family == ROTATION_REFLECTION:
-        a = int(
-            input(
-                f"Введите параметр a для поворота (целое число от 1 до {n - 1}): "
-            )
-        )
-        if not 1 <= a <= n - 1:
-            raise SystemExit(f"a должно быть целым числом от 1 до {n - 1}.")
-        b = int(
-            input(
-                f"Введите параметр b для отражения (целое число от 0 до {n - 1}): "
-            )
-        )
-        if not 0 <= b <= n - 1:
-            raise SystemExit(f"b должно быть целым числом от 0 до {n - 1}.")
-        generators = [(a, 0), ((-a) % n, 0), (b, 1)]
-        parameters = f"a={a}, b={b}"
-        k = ""
-        require_three_involution_conditions = False
-    else:
-        a = int(
-            input(
-                f"Введите параметр a для первого отражения (целое число от 0 до {n - 1}): "
-            )
-        )
-        b = int(
-            input(
-                f"Введите параметр b для второго отражения (целое число от 0 до {n - 1}, b>a): "
-            )
-        )
-        if not 0 <= a < b < n:
-            raise SystemExit(f"Параметры должны удовлетворять условию 0 <= a < b < {n}.")
-        generators = [(a, 1), (b, 1)]
-        parameters = f"a={a}, b={b}"
-        k = ""
-        require_three_involution_conditions = False
-
-    max_hamilton_time_seconds = read_optional_time_limit()
-    page_paths = read_optional_page_paths()
+    generators = read_custom_generators(n)
+    family = "custom_generators"
+    parameters = f"S={format_generator_pairs(generators)}"
 
     result = check_generator_system(
         n,
         generators,
         family=family,
         parameters=parameters,
-        k=k,
-        max_hamilton_time_seconds=max_hamilton_time_seconds,
-        require_three_involution_conditions=require_three_involution_conditions,
+        k="",
+        max_hamilton_check_n=0,
+        require_three_involution_conditions=False,
     )
     group = build_dihedral_group(n)
     graph = build_cayley_graph(group, generators, n)
-
-    page_route = ""
-    if page_paths and result["cycle"]:
-        try:
-            vertex_page_map = build_vertex_page_map(group, page_paths)
-        except ValueError as error:
-            raise SystemExit(str(error))
-        page_route = format_page_route(result["cycle"], vertex_page_map)
 
     image_path = reports_file_path(
         default_single_graph_image_filename(
@@ -1247,7 +1201,7 @@ def specific_graph_mode(run_mode="6"):
             filename_prefix,
         )
     )
-    draw_graph(graph, generators, cycle=result["cycle"], output_path=image_path)
+    draw_graph(graph, generators, cycle=None, output_path=image_path)
 
     report_path = write_specific_graph_report(
         default_specific_graph_report_filename(
@@ -1259,18 +1213,14 @@ def specific_graph_mode(run_mode="6"):
         result,
         graph,
         image_path,
-        page_route=page_route,
     )
 
     print("\nКонкретный граф построен.")
-    print(f"Семейство: {FAMILY_LABELS.get(family, family)}")
     print(f"Группа: D_{n}, порядок группы: {result['group_size']}")
     print(f"Порождающие в виде пар (k,f): {format_generator_pairs(generators)}")
     print(f"Порождающие в обозначениях: {{{format_generators(generators)}}}")
     print(f"Система порождает всю группу: {format_yes_no(result['generates'])}")
-    print(f"Статус поиска цикла: {format_cycle_status(result['cycle_status'])}")
-    if result["cycle"]:
-        print(f"Найденный цикл: {format_element_route(result['cycle'])}")
+    print("Поиск гамильтонова цикла не выполнялся.")
     print(f"Отчет сохранен в {report_path}")
     print(f"Изображение графа сохранено в {image_path}")
 
@@ -1438,7 +1388,7 @@ if __name__ == "__main__":
     print("3. Одиночная проверка")
     print("4. CSV-эксперимент")
     print("5. Подготовка дипломных примеров")
-    print("6. Построение конкретного графа")
+    print("6. Построение графа по заданному множеству S")
     mode = input("Введите 0, 1, 2, 3, 4, 5 или 6 [1]: ").strip()
 
     if not mode:
