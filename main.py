@@ -1286,6 +1286,12 @@ def experiment_mode(run_mode="4"):
         max_hamilton_n = max_n
 
     families = read_families_selection()
+    print("Перебор выполняется для всех n от 2 до заданного максимального n.")
+    if THREE_INVOLUTIONS in families:
+        print(
+            "Для нечетных n семейство трех инволюций с коммутирующей парой "
+            "не формируется; остальные выбранные семейства проверяются."
+        )
     page_paths = read_optional_page_paths()
     max_hamilton_time_seconds = read_optional_time_limit()
 

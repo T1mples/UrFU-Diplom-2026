@@ -12,7 +12,13 @@ from algorithm import (
     find_hamiltonian_cycle_with_stats,
 )
 from experiments import run_csv_experiment, write_experiment_summary
-from generator_systems import ROTATION_REFLECTION, THREE_INVOLUTIONS
+from generator_systems import (
+    ALL_FAMILIES,
+    ROTATION_REFLECTION,
+    THREE_INVOLUTIONS,
+    TWO_REFLECTIONS,
+    iter_generator_systems,
+)
 from webgraph import (
     build_vertex_page_map,
     cycle_to_web_route,
@@ -83,6 +89,18 @@ class CoreLogicTest(unittest.TestCase):
         self.assertFalse(result["three_involution_conditions"])
         self.assertTrue(result["generates"])
         self.assertTrue(result["hamiltonian"])
+
+    def test_odd_n_skips_three_involutions_but_keeps_other_families(self):
+        systems = list(iter_generator_systems(3, families=ALL_FAMILIES))
+        odd_families = [
+            system["family"]
+            for n, system in systems
+            if n == 3
+        ]
+
+        self.assertNotIn(THREE_INVOLUTIONS, odd_families)
+        self.assertIn(ROTATION_REFLECTION, odd_families)
+        self.assertIn(TWO_REFLECTIONS, odd_families)
 
     def test_cycle_to_web_route_closes_cycle(self):
         cycle = [(0, 0), (0, 1), (2, 0)]
