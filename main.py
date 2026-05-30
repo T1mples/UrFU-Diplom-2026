@@ -376,7 +376,7 @@ def draw_graph(graph, generators, cycle=None, output_path=None, show=True):
             width=4.0,
             min_source_margin=17,
             min_target_margin=17,
-            connectionstyle="arc3,rad=0.32",
+            connectionstyle="arc3,rad=0.0",
         )
         legend_handles.append(
             Line2D(
