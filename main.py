@@ -103,19 +103,41 @@ def read_families_selection(default_all=False):
     print("1. Три инволюции с коммутирующей парой")
     print("2. Поворот, обратный поворот и отражение")
     print("3. Две отражающие симметрии")
-    print("4. Все семейства")
-    default_label = "4" if default_all else "1"
-    family_mode = input(f"Введите 1, 2, 3 или 4 [{default_label}]: ").strip()
-    if not family_mode:
-        family_mode = default_label
+    default_label = "1,2,3" if default_all else "1"
+    raw_value = input(
+        f"Введите номера семейств через запятую, например 1,2 или 2,3 [{default_label}]: "
+    ).strip()
+    if not raw_value:
+        raw_value = default_label
 
-    if family_mode == "2":
-        return [ROTATION_REFLECTION]
-    if family_mode == "3":
-        return [TWO_REFLECTIONS]
-    if family_mode == "4":
-        return ALL_FAMILIES
-    return [THREE_INVOLUTIONS]
+    family_by_mode = {
+        "1": THREE_INVOLUTIONS,
+        "2": ROTATION_REFLECTION,
+        "3": TWO_REFLECTIONS,
+    }
+    tokens = [
+        token.strip()
+        for token in raw_value.replace(";", ",").replace(" ", ",").split(",")
+        if token.strip()
+    ]
+
+    selected_families = []
+    invalid_tokens = []
+    for token in tokens:
+        family = family_by_mode.get(token)
+        if family is None:
+            invalid_tokens.append(token)
+            continue
+        if family not in selected_families:
+            selected_families.append(family)
+
+    if invalid_tokens or not selected_families:
+        invalid = ", ".join(invalid_tokens) if invalid_tokens else raw_value
+        raise SystemExit(
+            f"Некорректный выбор семейств: {invalid}. Введите номера 1, 2 или 3 через запятую."
+        )
+
+    return selected_families
 
 
 def read_single_family_selection():
