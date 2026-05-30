@@ -200,7 +200,7 @@ def read_custom_generators(n):
 def read_optional_page_paths():
     try:
         filename = input(
-            "Введите путь к файлу со страницами или оставьте пустым: "
+            "Введите путь к файлу со страницами [без файла]: "
         ).strip()
     except EOFError:
         return None
@@ -222,7 +222,7 @@ def read_optional_page_paths():
 def read_optional_time_limit():
     try:
         raw_limit = input(
-            "Введите лимит времени на поиск цикла в секундах или оставьте пустым: "
+            "Введите лимит времени на поиск цикла в секундах [без ограничения]: "
         ).strip()
     except EOFError:
         return None
@@ -888,8 +888,7 @@ def search_exceptions(max_iterations=None, run_mode="1"):
     filename_prefix = mode_filename_prefix(run_mode)
     print("=== Начинаем поиск исключений ===")
     raw_max_n = input(
-        "Введите максимальное n для проверки гамильтонова цикла "
-        "или оставьте пустым без ограничения: "
+        "Введите максимальное n для проверки гамильтонова цикла [бесконечно]: "
     ).strip()
     if raw_max_n:
         try:
@@ -1323,7 +1322,7 @@ def experiment_mode(run_mode="4"):
     max_hamilton_time_seconds = read_optional_time_limit()
 
     raw_max_iterations = input(
-        "Введите максимальное число итераций или оставьте пустым: "
+        "Введите максимальное число итераций [без ограничения]: "
     ).strip()
     if raw_max_iterations:
         try:
@@ -1388,7 +1387,7 @@ def diploma_examples_mode(run_mode="5"):
         raise SystemExit("Максимальное n должно быть целым числом не меньше 2.")
 
     raw_target_n = input(
-        "Введите конкретное n для примеров [пусто - искать до max_n]: "
+        "Введите конкретное n для примеров [искать до max_n]: "
     ).strip()
     target_n = None
     if raw_target_n:
