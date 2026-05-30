@@ -1312,7 +1312,7 @@ def experiment_mode(run_mode="4"):
     else:
         max_hamilton_n = max_n
 
-    families = read_families_selection()
+    families = read_families_selection(default_all=True)
     print("Перебор выполняется для всех n от 2 до заданного максимального n.")
     if THREE_INVOLUTIONS in families:
         print(
