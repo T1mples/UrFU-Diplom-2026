@@ -292,7 +292,7 @@ def format_adjacency_matrix(vertices, graph):
 
 
 def generator_edge_radius(index):
-    radii = [0.18, 0.18, 0.0, 0.32, 0.32, -0.32, -0.46, 0.46]
+    radii = [0.18, 0.18, 0.32, 0.46, -0.32, -0.46, 0.60, -0.60]
     return radii[index % len(radii)]
 
 
