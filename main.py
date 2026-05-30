@@ -291,6 +291,11 @@ def format_adjacency_matrix(vertices, graph):
     return "[\n  " + ",\n  ".join(row_lines) + "\n]"
 
 
+def generator_edge_radius(index):
+    radii = [0.18, 0.18, 0.0, 0.32, 0.32, -0.32, -0.46, 0.46]
+    return radii[index % len(radii)]
+
+
 def draw_graph(graph, generators, cycle=None, output_path=None, show=True):
     graph_view = nx.DiGraph()
     labels = {}
@@ -345,7 +350,7 @@ def draw_graph(graph, generators, cycle=None, output_path=None, show=True):
             width=1.7,
             min_source_margin=15,
             min_target_margin=15,
-            connectionstyle="arc3,rad=0.0",
+            connectionstyle=f"arc3,rad={generator_edge_radius(index)}",
         )
         legend_handles.append(
             Line2D(
@@ -371,7 +376,7 @@ def draw_graph(graph, generators, cycle=None, output_path=None, show=True):
             width=4.0,
             min_source_margin=17,
             min_target_margin=17,
-            connectionstyle="arc3,rad=0.08",
+            connectionstyle="arc3,rad=0.32",
         )
         legend_handles.append(
             Line2D(
